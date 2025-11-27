@@ -31,10 +31,14 @@ endif()
 set(DEPS_INSTALL_DIR "${CMAKE_SOURCE_DIR}/deps/install" CACHE PATH "Dependencies install directory")
 set(LIBCARLA_INSTALL_DIR "${DEPS_INSTALL_DIR}/libcarla-client" CACHE PATH "LibCarla install directory")
 
+# LibCarla source is included in this repository
+set(LIBCARLA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/LibCarla" CACHE PATH "LibCarla source directory")
+
 # Check if dependencies are built
 if(NOT EXISTS "${LIBCARLA_INSTALL_DIR}/lib/libcarla_client.a")
     message(WARNING "LibCarla not found at ${LIBCARLA_INSTALL_DIR}")
     message(WARNING "Please run ./scripts/setup-dependencies.sh first")
+    message(STATUS "LibCarla source is included at: ${LIBCARLA_SOURCE_DIR}")
 endif()
 
 # Find dependencies

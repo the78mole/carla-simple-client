@@ -6,7 +6,8 @@ A standalone repository for building CARLA simulator clients **outside** the mai
 
 Building CARLA clients normally requires cloning the entire CARLA repository and building within its source tree. This project provides:
 
-- **Out-of-tree building**: Build clients without the full CARLA source
+- **Complete LibCarla sources included**: No need to clone the CARLA repository
+- **Out-of-tree building**: Build clients independently
 - **ARM64 Linux support**: Cross-compilation toolchain for ARM64 platforms
 - **Simplified dependencies**: Automated setup for required libraries
 - **Example code**: Ready-to-use C++ client example
@@ -76,6 +77,9 @@ Note: You'll need an ARM64 cross-compiler installed (e.g., `aarch64-linux-gnu-gc
 carla-simple-client/
 ├── .github/
 │   └── copilot-instructions.md  # Development guidelines
+├── LibCarla/                    # CARLA client library sources (from ue4/0.9.16)
+│   ├── cmake/                   # CMake build configuration
+│   └── source/                  # C++ source code
 ├── cmake/
 │   ├── toolchain-arm64.cmake    # ARM64 cross-compilation
 │   └── toolchain-x86_64.cmake   # Native x86_64 build
@@ -91,7 +95,7 @@ carla-simple-client/
 ## Target CARLA Version
 
 - **Branch**: [`ue4/0.9.16`](https://github.com/carla-simulator/carla/tree/ue4/0.9.16)
-- **LibCarla Source**: Extracted from the official CARLA repository
+- **LibCarla Source**: Included in `LibCarla/` directory (extracted from official CARLA repository)
 
 ## Dependencies
 

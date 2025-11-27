@@ -6,6 +6,8 @@ This document provides guidelines for GitHub Copilot and developers working on t
 
 This repository enables building CARLA simulator clients **externally** from the main CARLA source tree, specifically targeting the `ue4/0.9.16` branch. The primary goal is to simplify client development, especially on **ARM64 Linux** platforms.
 
+**Key Feature**: LibCarla sources are included directly in this repository, so there's no need to clone the main CARLA repository.
+
 ## Target CARLA Version
 
 - **Branch**: `ue4/0.9.16`
@@ -23,11 +25,14 @@ This repository enables building CARLA simulator clients **externally** from the
 carla-simple-client/
 ├── .github/
 │   └── copilot-instructions.md  # This file
+├── LibCarla/                    # CARLA client library sources (included)
+│   ├── cmake/                   # CMake build configuration
+│   └── source/                  # C++ source code
 ├── cmake/
 │   ├── toolchain-arm64.cmake    # ARM64 cross-compilation toolchain
 │   └── toolchain-x86_64.cmake   # x86_64 native toolchain
 ├── scripts/
-│   └── setup-dependencies.sh    # Script to download and build dependencies
+│   └── setup-dependencies.sh    # Script to build dependencies
 ├── examples/
 │   └── cpp_client/              # Example C++ client
 │       ├── CMakeLists.txt

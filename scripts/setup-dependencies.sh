@@ -230,10 +230,11 @@ build_libpng() {
 }
 
 # ==============================================================================
-# LibCarla (from CARLA repository)
+# LibCarla (sources included in repository)
 # ==============================================================================
 
-CARLA_SOURCE_DIR="${BUILD_DIR}/carla-source"
+# LibCarla source is included in this repository
+LIBCARLA_SOURCE_DIR="${PROJECT_ROOT}/LibCarla"
 
 build_libcarla() {
     if [[ -f "${LIBCARLA_INSTALL_DIR}/lib/libcarla_client.a" ]]; then
@@ -241,33 +242,12 @@ build_libcarla() {
         return
     fi
 
-    log "Downloading LibCarla source from CARLA ${CARLA_BRANCH}..."
-    
-    cd "${BUILD_DIR}"
-    
-    if [[ ! -d "carla-source" ]]; then
-        # Clone only the parts we need (sparse checkout)
-        git clone --depth 1 --filter=blob:none --sparse \
-            -b "${CARLA_BRANCH}" \
-            https://github.com/carla-simulator/carla.git carla-source
-        
-        cd carla-source
-        git sparse-checkout set LibCarla
+    # Verify LibCarla sources exist in the repository
+    if [[ ! -d "${LIBCARLA_SOURCE_DIR}/cmake" ]]; then
+        error "LibCarla sources not found at ${LIBCARLA_SOURCE_DIR}"
     fi
-    
-    cd "${CARLA_SOURCE_DIR}"
-    
-    # Generate Version.h
-    CARLA_VERSION="0.9.16"
-    mkdir -p LibCarla/source/carla
-    cat > LibCarla/source/carla/Version.h << EOF
-// Automatically generated file - DO NOT EDIT
-#pragma once
-#define CARLA_VERSION "${CARLA_VERSION}"
-#define CARLA_VERSION_MAJOR 0
-#define CARLA_VERSION_MINOR 9
-#define CARLA_VERSION_PATCH 16
-EOF
+
+    log "Building LibCarla client from included sources..."
     
     # Create CMake config file
     mkdir -p "${BUILD_DIR}/libcarla-build"
@@ -306,7 +286,7 @@ EOF
         -DCMAKE_TOOLCHAIN_FILE="${BUILD_DIR}/libcarla-build/ToolChain.cmake" \
         -DCMAKE_INSTALL_PREFIX="${LIBCARLA_INSTALL_DIR}" \
         -C "${BUILD_DIR}/libcarla-build/CarlaConfig.cmake" \
-        "${CARLA_SOURCE_DIR}/LibCarla/cmake"
+        "${LIBCARLA_SOURCE_DIR}/cmake"
     
     ninja -j "${BUILD_JOBS}"
     ninja install
