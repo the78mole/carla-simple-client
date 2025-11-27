@@ -42,14 +42,21 @@ namespace csd = carla::sensor::data;
 using namespace std::chrono_literals;
 using namespace std::string_literals;
 
-#define EXPECT_TRUE(pred) if (!(pred)) { throw std::runtime_error(#pred); }
+/**
+ * Helper function to check conditions and throw on failure.
+ */
+inline void check(bool condition, const char* message) {
+    if (!condition) {
+        throw std::runtime_error(message);
+    }
+}
 
 /**
  * Pick a random element from a range.
  */
 template <typename RangeT, typename RNG>
 static auto &RandomChoice(const RangeT &range, RNG &&generator) {
-    EXPECT_TRUE(range.size() > 0u);
+    check(range.size() > 0u, "Range must not be empty");
     std::uniform_int_distribution<size_t> dist{0u, range.size() - 1u};
     return range[dist(std::forward<RNG>(generator))];
 }
@@ -58,11 +65,15 @@ static auto &RandomChoice(const RangeT &range, RNG &&generator) {
  * Parse command line arguments.
  */
 static auto ParseArguments(int argc, const char *argv[]) {
-    EXPECT_TRUE((argc == 1u) || (argc == 3u));
     using ResultType = std::tuple<std::string, uint16_t>;
-    return argc == 3u ?
-        ResultType{argv[1u], static_cast<uint16_t>(std::stoi(argv[2u]))} :
-        ResultType{"localhost", 2000u};
+    
+    if (argc == 1u) {
+        return ResultType{"localhost", 2000u};
+    } else if (argc == 3u) {
+        return ResultType{argv[1u], static_cast<uint16_t>(std::stoi(argv[2u]))};
+    } else {
+        throw std::invalid_argument("Invalid number of arguments. Use: [host] [port]");
+    }
 }
 
 /**

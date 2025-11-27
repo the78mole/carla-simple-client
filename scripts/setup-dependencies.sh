@@ -68,9 +68,13 @@ build_boost() {
     cd "${DOWNLOAD_DIR}"
     
     if [[ ! -f "${BOOST_BASENAME}.tar.gz" ]]; then
-        log "Downloading Boost..."
-        wget -q "https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_BASENAME}.tar.gz" \
-            || wget -q "https://carla-releases.s3.us-east-005.backblazeb2.com/Backup/${BOOST_BASENAME}.tar.gz"
+        log "Downloading Boost from primary source..."
+        if ! wget -q "https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_BASENAME}.tar.gz"; then
+            log "Primary download failed, trying backup source..."
+            # Backup source: CARLA's S3 bucket (documented fallback)
+            wget -q "https://carla-releases.s3.us-east-005.backblazeb2.com/Backup/${BOOST_BASENAME}.tar.gz" \
+                || error "Failed to download Boost from both primary and backup sources"
+        fi
     fi
     
     log "Extracting Boost..."
@@ -90,8 +94,15 @@ build_boost() {
     
     # Copy to LibCarla install dir
     mkdir -p "${LIBCARLA_INSTALL_DIR}/include/system"
+    mkdir -p "${LIBCARLA_INSTALL_DIR}/lib"
     cp -rf "${BOOST_INSTALL_DIR}/include/boost" "${LIBCARLA_INSTALL_DIR}/include/system/"
-    cp -rf "${BOOST_INSTALL_DIR}/lib/"*.a "${LIBCARLA_INSTALL_DIR}/lib/" 2>/dev/null || true
+    
+    # Copy static libraries if they exist
+    if compgen -G "${BOOST_INSTALL_DIR}/lib/"*.a > /dev/null; then
+        cp -rf "${BOOST_INSTALL_DIR}/lib/"*.a "${LIBCARLA_INSTALL_DIR}/lib/"
+    else
+        warn "No static Boost libraries found at ${BOOST_INSTALL_DIR}/lib/"
+    fi
     
     log "Boost ${BOOST_VERSION} installed."
 }
@@ -280,7 +291,7 @@ EOF
     cat > "${BUILD_DIR}/libcarla-build/ToolChain.cmake" << EOF
 set(CMAKE_C_COMPILER ${CC})
 set(CMAKE_CXX_COMPILER ${CXX})
-set(CMAKE_CXX_FLAGS "\${CMAKE_CXX_FLAGS} ${CXXFLAGS}" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS_INIT "${CXXFLAGS}")
 EOF
     
     log "Building LibCarla client..."

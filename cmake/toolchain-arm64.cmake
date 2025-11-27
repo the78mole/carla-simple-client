@@ -55,9 +55,11 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 # Set this if you have a specific ARM64 sysroot
 # set(CMAKE_SYSROOT "/path/to/arm64-sysroot")
 
-# pkg-config for cross-compilation
-set(ENV{PKG_CONFIG_PATH} "")
-set(ENV{PKG_CONFIG_LIBDIR} "${CMAKE_SYSROOT}/usr/lib/aarch64-linux-gnu/pkgconfig:${CMAKE_SYSROOT}/usr/share/pkgconfig")
+# pkg-config for cross-compilation (only if sysroot is set)
+if(CMAKE_SYSROOT)
+    set(ENV{PKG_CONFIG_PATH} "")
+    set(ENV{PKG_CONFIG_LIBDIR} "${CMAKE_SYSROOT}/usr/lib/aarch64-linux-gnu/pkgconfig:${CMAKE_SYSROOT}/usr/share/pkgconfig")
+endif()
 
 message(STATUS "ARM64 Cross-Compilation Toolchain")
 message(STATUS "  C Compiler: ${CMAKE_C_COMPILER}")
