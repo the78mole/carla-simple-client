@@ -1,0 +1,240 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.9.16.1)'
+        required: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Generate semantic version
+  version:
+    name: Generate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_tag: ${{ steps.version.outputs.version_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate version
+        id: version
+        uses: paulhatch/semantic-version@v5.4.0
+        with:
+          tag_prefix: "v"
+          major_pattern: "(MAJOR)"
+          minor_pattern: "(MINOR)"
+          version_format: "${major}.${minor}.${patch}"
+          bump_each_commit: false
+
+  # Build C++ clients
+  build-cpp:
+    name: Build C++ (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+          - os: ubuntu-24.04
+            arch: aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build git wget \
+            libpng-dev libtiff-dev libjpeg-dev \
+            autoconf automake libtool
+
+      - name: Install cross-compiler (ARM64)
+        if: matrix.arch == 'aarch64'
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Setup dependencies
+        run: ./scripts/setup-dependencies.sh
+
+      - name: Build (native)
+        if: matrix.arch == 'x86_64'
+        run: |
+          mkdir -p build
+          cd build
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+          ninja
+
+      - name: Build (cross-compile ARM64)
+        if: matrix.arch == 'aarch64'
+        run: |
+          mkdir -p build
+          cd build
+          cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-arm64.cmake -DCMAKE_BUILD_TYPE=Release ..
+          ninja
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          tar -czvf dist/carla-cpp-client-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}.tar.gz \
+            -C build/examples/cpp_client carla_cpp_client \
+            -C ../../../deps/install/libcarla-client .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-client-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
+  # Build Python wheels
+  build-wheels:
+    name: Build wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-15]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install cibuildwheel
+        run: uv pip install cibuildwheel --system
+
+      - name: Build wheels
+        run: uv run cibuildwheel --output-dir wheelhouse
+        env:
+          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
+          CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_*"
+          CIBW_ARCHS_LINUX: x86_64 aarch64
+          CIBW_ARCHS_MACOS: x86_64 arm64
+          CIBW_ENVIRONMENT: CARLA_VERSION=${{ needs.version.outputs.version }}
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  # Build source distribution
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Build sdist
+        run: uv build --sdist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # Create GitHub Release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [version, build-cpp, build-wheels, build-sdist]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -name "*.tar.gz" -exec cp {} release/ \;
+          find artifacts -name "*.whl" -exec cp {} release/ \;
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          name: CARLA Simple Client v${{ needs.version.outputs.version }}
+          body: |
+            ## CARLA Simple Client v${{ needs.version.outputs.version }}
+            
+            Standalone client library for CARLA Simulator (ue4/0.9.16 branch).
+            
+            ### C++ Client Binaries
+            - `carla-cpp-client-*-linux-x86_64.tar.gz` - Ubuntu 24.04 x86_64
+            - `carla-cpp-client-*-linux-aarch64.tar.gz` - Ubuntu 24.04 ARM64
+            
+            ### Python Wheels
+            Available for:
+            - Ubuntu 22.04/24.04 (x86_64, ARM64)
+            - macOS 15 (x86_64, ARM64)
+            - Python 3.8, 3.9, 3.10, 3.11, 3.12
+            
+            Install from PyPI:
+            ```bash
+            pip install carla-client
+            ```
+          files: release/*
+          draft: false
+          prerelease: false
+
+  # Publish to PyPI
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [version, build-wheels, build-sdist, release]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && !env.ACT
+    environment:
+      name: pypi
+      url: https://pypi.org/p/carla-client
+    permissions:
+      id-token: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare dist files
+        run: |
+          mkdir -p dist
+          find artifacts -name "*.whl" -exec cp {} dist/ \;
+          find artifacts -name "*.tar.gz" -exec cp {} dist/ \;
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
