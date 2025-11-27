@@ -1,6 +1,6 @@
 # CARLA Simple Client
 
-A standalone repository for building CARLA simulator clients **outside** the main CARLA source tree. This project targets the `ue4/0.9.16` branch of CARLA and is optimized for ARM64 Linux development.
+A standalone repository for building CARLA simulator clients **outside** the main CARLA source tree. This project targets the `ue4/0.9.16` branch of CARLA and supports multiple platforms including ARM64/x86_64 Linux and macOS.
 
 ## Overview
 
@@ -8,9 +8,9 @@ Building CARLA clients normally requires cloning the entire CARLA repository and
 
 - **Complete LibCarla sources included**: No need to clone the CARLA repository
 - **Out-of-tree building**: Build clients independently
-- **ARM64 Linux support**: Cross-compilation toolchain for ARM64 platforms
+- **Multi-platform support**: ARM64 & x86_64 on Linux (Ubuntu 22.04+, 24.04+) and macOS 15
 - **Simplified dependencies**: Automated setup for required libraries
-- **Example code**: Ready-to-use C++ client example
+- **Example code**: Ready-to-use C++ and Python client examples
 
 ## Quick Start
 
@@ -21,6 +21,8 @@ Building CARLA clients normally requires cloning the entire CARLA repository and
 - Git
 - Ninja (recommended) or Make
 - wget, tar, unzip
+- **Python 3.8+** (for Python client)
+- **uv** (recommended for Python package management)
 
 ### Ubuntu/Debian Dependencies
 
@@ -86,7 +88,8 @@ carla-simple-client/
 ├── scripts/
 │   └── setup-dependencies.sh    # Dependency setup script
 ├── examples/
-│   └── cpp_client/              # Example C++ client
+│   ├── cpp_client/              # Example C++ client
+│   └── python_client/           # Example Python client (planned)
 ├── CMakeLists.txt               # Main CMake configuration
 ├── README.md                    # This file
 └── LICENSE                      # MIT License
@@ -110,7 +113,39 @@ This project uses the following libraries:
 | xerces-c | 3.2.3 | XML parsing |
 | PROJ | 7.2.1 | Coordinate transformations |
 
-## Usage Example
+## Supported Platforms
+
+This project provides pre-built releases for:
+
+### C++ Clients
+- Ubuntu 24.04 LTS (x86_64, ARM64)
+
+### Python Wheels
+- Ubuntu 22.04 LTS (x86_64, ARM64)
+- Ubuntu 24.04 LTS (x86_64, ARM64)
+- macOS 15 (x86_64, ARM64)
+
+Python packages are published to PyPI for easy installation.
+
+**Using uv (recommended):**
+
+```bash
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install carla-client
+uv pip install carla-client
+```
+
+**Using pip:**
+
+```bash
+pip install carla-client
+```
+
+## Usage Examples
+
+### C++ Client
 
 ```cpp
 #include <carla/client/Client.h>
@@ -129,6 +164,22 @@ int main() {
     
     return 0;
 }
+```
+
+### Python Client
+
+```python
+import carla
+
+# Connect to CARLA server
+client = carla.Client('localhost', 2000)
+client.set_timeout(10.0)
+
+# Get the simulation world
+world = client.get_world()
+
+# Print server info
+print(f"Server version: {client.get_server_version()}")
 ```
 
 ## Building Your Own Client
@@ -151,6 +202,56 @@ target_link_libraries(your_app PRIVATE
     Recast Detour DetourCrowd
     png
 )
+```
+
+## Python Development
+
+### Building Python Wheels
+
+This project uses **uv** for Python package management and building.
+
+**Setup development environment:**
+
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install dependencies
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -e ".[dev]"
+```
+
+**Build wheels:**
+
+```bash
+# Build wheel for current platform
+uv build
+
+# Output will be in dist/
+ls dist/
+```
+
+**Run tests:**
+
+```bash
+uv run pytest
+```
+
+**Format and lint:**
+
+```bash
+uv run black .
+uv run ruff check .
+```
+
+### Cross-Platform Wheel Building
+
+For building wheels for multiple platforms (Ubuntu 22.04/24.04, macOS 15), use the CI/CD pipeline or `cibuildwheel`:
+
+```bash
+uv pip install cibuildwheel
+uv run cibuildwheel --platform linux
 ```
 
 ## Contributing
