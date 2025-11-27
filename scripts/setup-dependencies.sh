@@ -1,0 +1,342 @@
+#!/bin/bash
+#
+# Setup script for CARLA Simple Client dependencies
+#
+# This script downloads and builds all required dependencies for building
+# CARLA clients outside the main CARLA source tree.
+#
+# Target CARLA version: ue4/0.9.16
+#
+
+set -e
+
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Build settings
+CARLA_BRANCH="ue4/0.9.16"
+BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
+BUILD_DIR="${PROJECT_ROOT}/deps/build"
+INSTALL_DIR="${PROJECT_ROOT}/deps/install"
+DOWNLOAD_DIR="${PROJECT_ROOT}/deps/downloads"
+LIBCARLA_INSTALL_DIR="${INSTALL_DIR}/libcarla-client"
+
+# Compiler settings
+CC="${CC:-gcc}"
+CXX="${CXX:-g++}"
+CXXFLAGS="${CXXFLAGS:--std=c++14 -fPIC -O3 -DNDEBUG}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+log() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+    exit 1
+}
+
+# Create directories
+mkdir -p "${BUILD_DIR}" "${INSTALL_DIR}" "${DOWNLOAD_DIR}" "${LIBCARLA_INSTALL_DIR}"
+
+# ==============================================================================
+# Boost
+# ==============================================================================
+
+BOOST_VERSION="1.84.0"
+BOOST_BASENAME="boost_${BOOST_VERSION//./_}"
+BOOST_INSTALL_DIR="${INSTALL_DIR}/boost-${BOOST_VERSION}"
+
+build_boost() {
+    if [[ -f "${BOOST_INSTALL_DIR}/lib/libboost_filesystem.a" ]]; then
+        log "Boost ${BOOST_VERSION} already installed."
+        return
+    fi
+
+    log "Building Boost ${BOOST_VERSION}..."
+    
+    cd "${DOWNLOAD_DIR}"
+    
+    if [[ ! -f "${BOOST_BASENAME}.tar.gz" ]]; then
+        log "Downloading Boost..."
+        wget -q "https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_BASENAME}.tar.gz" \
+            || wget -q "https://carla-releases.s3.us-east-005.backblazeb2.com/Backup/${BOOST_BASENAME}.tar.gz"
+    fi
+    
+    log "Extracting Boost..."
+    tar -xzf "${BOOST_BASENAME}.tar.gz" -C "${BUILD_DIR}"
+    
+    cd "${BUILD_DIR}/${BOOST_BASENAME}"
+    
+    ./bootstrap.sh \
+        --prefix="${BOOST_INSTALL_DIR}" \
+        --with-libraries=python,filesystem,system,program_options
+    
+    ./b2 \
+        cxxflags="${CXXFLAGS}" \
+        --prefix="${BOOST_INSTALL_DIR}" \
+        -j "${BUILD_JOBS}" \
+        install
+    
+    # Copy to LibCarla install dir
+    mkdir -p "${LIBCARLA_INSTALL_DIR}/include/system"
+    cp -rf "${BOOST_INSTALL_DIR}/include/boost" "${LIBCARLA_INSTALL_DIR}/include/system/"
+    cp -rf "${BOOST_INSTALL_DIR}/lib/"*.a "${LIBCARLA_INSTALL_DIR}/lib/" 2>/dev/null || true
+    
+    log "Boost ${BOOST_VERSION} installed."
+}
+
+# ==============================================================================
+# rpclib
+# ==============================================================================
+
+RPCLIB_VERSION="v2.2.1_c5"
+RPCLIB_INSTALL_DIR="${INSTALL_DIR}/rpclib-${RPCLIB_VERSION}"
+
+build_rpclib() {
+    if [[ -f "${RPCLIB_INSTALL_DIR}/lib/librpc.a" ]]; then
+        log "rpclib ${RPCLIB_VERSION} already installed."
+        return
+    fi
+
+    log "Building rpclib ${RPCLIB_VERSION}..."
+    
+    cd "${BUILD_DIR}"
+    
+    if [[ ! -d "rpclib-source" ]]; then
+        git clone -b "${RPCLIB_VERSION}" --depth 1 \
+            https://github.com/carla-simulator/rpclib.git rpclib-source
+    fi
+    
+    mkdir -p rpclib-build
+    cd rpclib-build
+    
+    cmake -G "Ninja" \
+        -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
+        -DCMAKE_INSTALL_PREFIX="${RPCLIB_INSTALL_DIR}" \
+        ../rpclib-source
+    
+    ninja -j "${BUILD_JOBS}"
+    ninja install
+    
+    # Copy to LibCarla install dir
+    mkdir -p "${LIBCARLA_INSTALL_DIR}/include/system"
+    cp -rf "${RPCLIB_INSTALL_DIR}/include/rpc" "${LIBCARLA_INSTALL_DIR}/include/system/"
+    cp -f "${RPCLIB_INSTALL_DIR}/lib/librpc.a" "${LIBCARLA_INSTALL_DIR}/lib/"
+    
+    log "rpclib ${RPCLIB_VERSION} installed."
+}
+
+# ==============================================================================
+# Recast Navigation
+# ==============================================================================
+
+RECAST_INSTALL_DIR="${INSTALL_DIR}/recast"
+
+build_recast() {
+    if [[ -f "${RECAST_INSTALL_DIR}/lib/libRecast.a" ]]; then
+        log "Recast already installed."
+        return
+    fi
+
+    log "Building Recast Navigation..."
+    
+    cd "${BUILD_DIR}"
+    
+    if [[ ! -d "recast-source" ]]; then
+        git clone --depth 1 -b carla \
+            https://github.com/carla-simulator/recastnavigation.git recast-source
+    fi
+    
+    mkdir -p recast-build
+    cd recast-build
+    
+    cmake -G "Ninja" \
+        -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
+        -DCMAKE_INSTALL_PREFIX="${RECAST_INSTALL_DIR}" \
+        -DRECASTNAVIGATION_DEMO=OFF \
+        -DRECASTNAVIGATION_TEST=OFF \
+        ../recast-source
+    
+    ninja -j "${BUILD_JOBS}"
+    ninja install
+    
+    # Copy to LibCarla install dir
+    mkdir -p "${LIBCARLA_INSTALL_DIR}/include/system"
+    cp -rf "${RECAST_INSTALL_DIR}/include/recast" "${LIBCARLA_INSTALL_DIR}/include/system/"
+    cp -f "${RECAST_INSTALL_DIR}/lib/"*.a "${LIBCARLA_INSTALL_DIR}/lib/"
+    
+    log "Recast installed."
+}
+
+# ==============================================================================
+# libpng
+# ==============================================================================
+
+LIBPNG_VERSION="1.6.37"
+LIBPNG_INSTALL_DIR="${INSTALL_DIR}/libpng-${LIBPNG_VERSION}"
+
+build_libpng() {
+    if [[ -f "${LIBPNG_INSTALL_DIR}/lib/libpng.a" ]]; then
+        log "libpng ${LIBPNG_VERSION} already installed."
+        return
+    fi
+
+    log "Building libpng ${LIBPNG_VERSION}..."
+    
+    cd "${DOWNLOAD_DIR}"
+    
+    if [[ ! -f "libpng-${LIBPNG_VERSION}.tar.xz" ]]; then
+        log "Downloading libpng..."
+        wget -q "https://sourceforge.net/projects/libpng/files/libpng16/${LIBPNG_VERSION}/libpng-${LIBPNG_VERSION}.tar.xz"
+    fi
+    
+    log "Extracting libpng..."
+    tar -xf "libpng-${LIBPNG_VERSION}.tar.xz" -C "${BUILD_DIR}"
+    
+    cd "${BUILD_DIR}/libpng-${LIBPNG_VERSION}"
+    
+    CFLAGS="-fPIC" ./configure --prefix="${LIBPNG_INSTALL_DIR}"
+    make -j "${BUILD_JOBS}"
+    make install
+    
+    # Copy to LibCarla install dir
+    mkdir -p "${LIBCARLA_INSTALL_DIR}/include/system/libpng16"
+    cp -rf "${LIBPNG_INSTALL_DIR}/include/"* "${LIBCARLA_INSTALL_DIR}/include/system/"
+    cp -f "${LIBPNG_INSTALL_DIR}/lib/"*.a "${LIBCARLA_INSTALL_DIR}/lib/"
+    
+    log "libpng ${LIBPNG_VERSION} installed."
+}
+
+# ==============================================================================
+# LibCarla (from CARLA repository)
+# ==============================================================================
+
+CARLA_SOURCE_DIR="${BUILD_DIR}/carla-source"
+
+build_libcarla() {
+    if [[ -f "${LIBCARLA_INSTALL_DIR}/lib/libcarla_client.a" ]]; then
+        log "LibCarla client already installed."
+        return
+    fi
+
+    log "Downloading LibCarla source from CARLA ${CARLA_BRANCH}..."
+    
+    cd "${BUILD_DIR}"
+    
+    if [[ ! -d "carla-source" ]]; then
+        # Clone only the parts we need (sparse checkout)
+        git clone --depth 1 --filter=blob:none --sparse \
+            -b "${CARLA_BRANCH}" \
+            https://github.com/carla-simulator/carla.git carla-source
+        
+        cd carla-source
+        git sparse-checkout set LibCarla
+    fi
+    
+    cd "${CARLA_SOURCE_DIR}"
+    
+    # Generate Version.h
+    CARLA_VERSION="0.9.16"
+    mkdir -p LibCarla/source/carla
+    cat > LibCarla/source/carla/Version.h << EOF
+// Automatically generated file - DO NOT EDIT
+#pragma once
+#define CARLA_VERSION "${CARLA_VERSION}"
+#define CARLA_VERSION_MAJOR 0
+#define CARLA_VERSION_MINOR 9
+#define CARLA_VERSION_PATCH 16
+EOF
+    
+    # Create CMake config file
+    mkdir -p "${BUILD_DIR}/libcarla-build"
+    cat > "${BUILD_DIR}/libcarla-build/CarlaConfig.cmake" << EOF
+# Automatically generated CARLA config
+add_definitions(-DBOOST_ERROR_CODE_HEADER_ONLY)
+
+set(BOOST_INCLUDE_PATH "${BOOST_INSTALL_DIR}/include")
+set(RPCLIB_INCLUDE_PATH "${RPCLIB_INSTALL_DIR}/include")
+set(RPCLIB_LIB_PATH "${RPCLIB_INSTALL_DIR}/lib")
+set(RECAST_INCLUDE_PATH "${RECAST_INSTALL_DIR}/include")
+set(RECAST_LIB_PATH "${RECAST_INSTALL_DIR}/lib")
+set(LIBPNG_INCLUDE_PATH "${LIBPNG_INSTALL_DIR}/include")
+set(LIBPNG_LIB_PATH "${LIBPNG_INSTALL_DIR}/lib")
+set(BOOST_LIB_PATH "${BOOST_INSTALL_DIR}/lib")
+
+add_definitions(-DLIBCARLA_IMAGE_WITH_PNG_SUPPORT=true)
+EOF
+    
+    # Create toolchain file
+    cat > "${BUILD_DIR}/libcarla-build/ToolChain.cmake" << EOF
+set(CMAKE_C_COMPILER ${CC})
+set(CMAKE_CXX_COMPILER ${CXX})
+set(CMAKE_CXX_FLAGS "\${CMAKE_CXX_FLAGS} ${CXXFLAGS}" CACHE STRING "" FORCE)
+EOF
+    
+    log "Building LibCarla client..."
+    
+    cd "${BUILD_DIR}/libcarla-build"
+    
+    cmake -G "Ninja" \
+        -DCMAKE_BUILD_TYPE=Client \
+        -DLIBCARLA_BUILD_RELEASE=ON \
+        -DLIBCARLA_BUILD_DEBUG=OFF \
+        -DLIBCARLA_BUILD_TEST=OFF \
+        -DCMAKE_TOOLCHAIN_FILE="${BUILD_DIR}/libcarla-build/ToolChain.cmake" \
+        -DCMAKE_INSTALL_PREFIX="${LIBCARLA_INSTALL_DIR}" \
+        -C "${BUILD_DIR}/libcarla-build/CarlaConfig.cmake" \
+        "${CARLA_SOURCE_DIR}/LibCarla/cmake"
+    
+    ninja -j "${BUILD_JOBS}"
+    ninja install
+    
+    log "LibCarla client installed to ${LIBCARLA_INSTALL_DIR}"
+}
+
+# ==============================================================================
+# Main
+# ==============================================================================
+
+main() {
+    log "Setting up CARLA Simple Client dependencies..."
+    log "CARLA branch: ${CARLA_BRANCH}"
+    log "Build jobs: ${BUILD_JOBS}"
+    log "Install directory: ${INSTALL_DIR}"
+    echo
+    
+    # Check for required tools
+    for cmd in cmake ninja git wget; do
+        if ! command -v "$cmd" &> /dev/null; then
+            error "$cmd is required but not installed."
+        fi
+    done
+    
+    # Build dependencies in order
+    build_boost
+    build_rpclib
+    build_recast
+    build_libpng
+    build_libcarla
+    
+    log ""
+    log "All dependencies installed successfully!"
+    log ""
+    log "LibCarla client is installed at: ${LIBCARLA_INSTALL_DIR}"
+    log ""
+    log "You can now build the project:"
+    log "  mkdir build && cd build"
+    log "  cmake -G Ninja .."
+    log "  ninja"
+}
+
+main "$@"
