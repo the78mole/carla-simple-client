@@ -54,20 +54,41 @@ if (BUILD_RSS_VARIANT)
 endif()
 
 # Install Recast&Detour libraries
-install(DIRECTORY "${RECAST_INCLUDE_PATH}/recast" DESTINATION include/system)
-file(GLOB libcarla_carla_recastlib "${RECAST_LIB_PATH}/*.*")
-install(FILES ${libcarla_carla_recastlib} DESTINATION lib)
+# NOTE: Dependencies are already installed by setup-dependencies.sh
+# install(DIRECTORY "${RECAST_INCLUDE_PATH}/recast" DESTINATION include/system)
+# file(GLOB libcarla_carla_recastlib_tmp "${RECAST_LIB_PATH}/*.*")
+# set(libcarla_carla_recastlib "")
+# foreach(item ${libcarla_carla_recastlib_tmp})
+#   if(NOT IS_DIRECTORY "${item}")
+#     list(APPEND libcarla_carla_recastlib "${item}")
+#   endif()
+# endforeach()
+# install(FILES ${libcarla_carla_recastlib} DESTINATION lib)
 
 # Install rpclib (install in system folder to avoid extra warnings).
-install(DIRECTORY "${RPCLIB_INCLUDE_PATH}/rpc" DESTINATION include/system)
-file(GLOB libcarla_carla_rpclib "${RPCLIB_LIB_PATH}/*.*")
-install(FILES ${libcarla_carla_rpclib} DESTINATION lib)
+# NOTE: Dependencies are already installed by setup-dependencies.sh
+# install(DIRECTORY "${RPCLIB_INCLUDE_PATH}/rpc" DESTINATION include/system)
+# file(GLOB libcarla_carla_rpclib_tmp "${RPCLIB_LIB_PATH}/*.*")
+# set(libcarla_carla_rpclib "")
+# foreach(item ${libcarla_carla_rpclib_tmp})
+#   if(NOT IS_DIRECTORY "${item}")
+#     list(APPEND libcarla_carla_rpclib "${item}")
+#   endif()
+# endforeach()
+# install(FILES ${libcarla_carla_rpclib} DESTINATION lib)
 
 # Install boost headers (install in system folder to avoid extra warnings).
 # @todo Remove boost from public interface of LibCarla.client.
-install(DIRECTORY "${BOOST_INCLUDE_PATH}/boost" DESTINATION include/system)
-file(GLOB boost_libraries "${BOOST_LIB_PATH}/*.*")
-install(FILES ${boost_libraries} DESTINATION lib)
+# NOTE: Dependencies are already installed by setup-dependencies.sh
+# install(DIRECTORY "${BOOST_INCLUDE_PATH}/boost" DESTINATION include/system)
+# file(GLOB boost_libraries_tmp "${BOOST_LIB_PATH}/*.*")
+# set(boost_libraries "")
+# foreach(item ${boost_libraries_tmp})
+#   if(NOT IS_DIRECTORY "${item}")
+#     list(APPEND boost_libraries "${item}")
+#   endif()
+# endforeach()
+# install(FILES ${boost_libraries} DESTINATION lib)
 
 # Windows need libpng alongside with zlib to be installed
 if (WIN32)
@@ -86,9 +107,16 @@ if (WIN32)
     install(FILES ${libpng_libraries} DESTINATION lib)
 else ()
   # Install libpng library
-  install(DIRECTORY "${LIBPNG_INCLUDE_PATH}" DESTINATION include/system)
-  file(GLOB libcarla_carla_libpnglib "${LIBPNG_LIB_PATH}/*.*")
-  install(FILES ${libcarla_carla_libpnglib} DESTINATION lib)
+  # NOTE: Dependencies are already installed by setup-dependencies.sh
+  # install(DIRECTORY "${LIBPNG_INCLUDE_PATH}" DESTINATION include/system)
+  # file(GLOB libcarla_carla_libpnglib_tmp "${LIBPNG_LIB_PATH}/*.*")
+  # set(libcarla_carla_libpnglib "")
+  # foreach(item ${libcarla_carla_libpnglib_tmp})
+  #   if(NOT IS_DIRECTORY "${item}")
+  #     list(APPEND libcarla_carla_libpnglib "${item}")
+  #   endif()
+  # endforeach()
+  # install(FILES ${libcarla_carla_libpnglib} DESTINATION lib)
 endif (WIN32)
 
 # Add sources.
@@ -270,15 +298,8 @@ install(FILES ${libcarla_carla_trafficmanager_sources} DESTINATION include/carla
 # Create targets for debug and release in the same build type.
 # ==============================================================================
 
-
 if (LIBCARLA_BUILD_RELEASE)
   add_library(carla_client${carla_target_postfix} STATIC ${libcarla_sources})
-
-  target_include_directories(carla_client${carla_target_postfix} SYSTEM PRIVATE
-      "${BOOST_INCLUDE_PATH}"
-      "${RPCLIB_INCLUDE_PATH}"
-      "${RECAST_INCLUDE_PATH}"
-      "${LIBPNG_INCLUDE_PATH}")
 
   if (BUILD_RSS_VARIANT)
     target_compile_definitions(carla_client${carla_target_postfix} PRIVATE RSS_ENABLED RSS_USE_TBB)

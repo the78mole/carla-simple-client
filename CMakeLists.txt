@@ -81,10 +81,14 @@ set_target_properties(DetourCrowd PROPERTIES
     IMPORTED_LOCATION "${CARLA_LIB_DIR}/libDetourCrowd.a"
 )
 
-# System libraries
+# System libraries - set hints for find_package
+set(PNG_PNG_INCLUDE_DIR "${CARLA_INCLUDE_DIR}/system")
+set(PNG_LIBRARY "${CARLA_LIB_DIR}/libpng.a")
+
+# For now, we don't require JPEG and TIFF if they're not available
 find_package(PNG REQUIRED)
-find_package(JPEG)
-find_package(TIFF)
+# find_package(JPEG)
+# find_package(TIFF)
 
 # Create an interface library for all CARLA dependencies
 add_library(carla_deps INTERFACE)

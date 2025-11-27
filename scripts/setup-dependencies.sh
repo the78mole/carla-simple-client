@@ -65,6 +65,12 @@ build_boost() {
 
     log "Building Boost ${BOOST_VERSION}..."
     
+    # Check for Python development headers
+    if ! command -v python3-config &> /dev/null; then
+        warn "python3-config not found. Boost.Python may fail to build."
+        warn "Install python3-dev (Debian/Ubuntu) or python3-devel (RHEL/Fedora)"
+    fi
+    
     cd "${DOWNLOAD_DIR}"
     
     if [[ ! -f "${BOOST_BASENAME}.tar.gz" ]]; then
@@ -82,9 +88,27 @@ build_boost() {
     
     cd "${BUILD_DIR}/${BOOST_BASENAME}"
     
-    ./bootstrap.sh \
-        --prefix="${BOOST_INSTALL_DIR}" \
-        --with-libraries=python,filesystem,system,program_options
+    # Try to detect Python
+    PYTHON_INCLUDE=""
+    PYTHON_LIB=""
+    if command -v python3-config &> /dev/null; then
+        PYTHON_INCLUDE=$(python3-config --includes | sed 's/-I//g' | awk '{print $1}')
+        PYTHON_LIB=$(python3-config --ldflags | grep -o '\-L[^ ]*' | sed 's/-L//')
+        log "Python detected: include=${PYTHON_INCLUDE}, lib=${PYTHON_LIB}"
+    fi
+    
+    # Configure Boost with Python if available
+    if [[ -n "${PYTHON_INCLUDE}" ]]; then
+        ./bootstrap.sh \
+            --prefix="${BOOST_INSTALL_DIR}" \
+            --with-libraries=python,filesystem,system,program_options \
+            --with-python=$(which python3)
+    else
+        warn "Python development headers not found, building without Boost.Python"
+        ./bootstrap.sh \
+            --prefix="${BOOST_INSTALL_DIR}" \
+            --with-libraries=filesystem,system,program_options
+    fi
     
     ./b2 \
         cxxflags="${CXXFLAGS}" \
@@ -255,6 +279,7 @@ build_libcarla() {
 # Automatically generated CARLA config
 add_definitions(-DBOOST_ERROR_CODE_HEADER_ONLY)
 
+set(CARLA_VERSION "0.9.16")
 set(BOOST_INCLUDE_PATH "${BOOST_INSTALL_DIR}/include")
 set(RPCLIB_INCLUDE_PATH "${RPCLIB_INSTALL_DIR}/include")
 set(RPCLIB_LIB_PATH "${RPCLIB_INSTALL_DIR}/lib")
@@ -267,11 +292,11 @@ set(BOOST_LIB_PATH "${BOOST_INSTALL_DIR}/lib")
 add_definitions(-DLIBCARLA_IMAGE_WITH_PNG_SUPPORT=true)
 EOF
     
-    # Create toolchain file
+    # Create toolchain file with dependency include paths
     cat > "${BUILD_DIR}/libcarla-build/ToolChain.cmake" << EOF
 set(CMAKE_C_COMPILER ${CC})
 set(CMAKE_CXX_COMPILER ${CXX})
-set(CMAKE_CXX_FLAGS_INIT "${CXXFLAGS}")
+set(CMAKE_CXX_FLAGS_INIT "${CXXFLAGS} -isystem ${BOOST_INSTALL_DIR}/include -isystem ${RPCLIB_INSTALL_DIR}/include -isystem ${RECAST_INSTALL_DIR}/include -isystem ${LIBPNG_INSTALL_DIR}/include")
 EOF
     
     log "Building LibCarla client..."
