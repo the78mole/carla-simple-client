@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(carla_cpp_client VERSION 0.1.0 LANGUAGES CXX)
+project(carla_cpp_client_window VERSION 0.1.0 LANGUAGES CXX)
 
 # Find LibCarla installation
 set(CARLA_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../deps/install/libcarla-client")
@@ -13,14 +13,17 @@ set(PNG_LIBRARY "${CARLA_LIB_DIR}/libpng.a")
 find_package(PNG REQUIRED)
 find_package(Threads REQUIRED)
 
-add_executable(carla_cpp_client main.cpp)
+# Find OpenCV for image display
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
 
-target_include_directories(carla_cpp_client PRIVATE
+add_executable(carla_cpp_client_window main.cpp)
+
+target_include_directories(carla_cpp_client_window PRIVATE
     ${CARLA_INCLUDE_DIR}
     ${CARLA_INCLUDE_DIR}/system
 )
 
-target_link_libraries(carla_cpp_client PRIVATE
+target_link_libraries(carla_cpp_client_window PRIVATE
     ${CARLA_LIB_DIR}/libcarla_client.a
     ${CARLA_LIB_DIR}/librpc.a
     ${CARLA_LIB_DIR}/libboost_filesystem.a
@@ -29,14 +32,15 @@ target_link_libraries(carla_cpp_client PRIVATE
     ${CARLA_LIB_DIR}/libDetourCrowd.a
     PNG::PNG
     Threads::Threads
+    ${OpenCV_LIBS}
 )
 
-target_compile_features(carla_cpp_client PRIVATE cxx_std_14)
-target_compile_definitions(carla_cpp_client PRIVATE
+target_compile_features(carla_cpp_client_window PRIVATE cxx_std_14)
+target_compile_definitions(carla_cpp_client_window PRIVATE
     BOOST_ERROR_CODE_HEADER_ONLY
 )
 
 # Install the example
-install(TARGETS carla_cpp_client
+install(TARGETS carla_cpp_client_window
     RUNTIME DESTINATION bin
 )

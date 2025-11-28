@@ -142,11 +142,14 @@ jobs:
         if: ${{ env.ACT && matrix.os != 'macos-15' }}
         uses: pypa/cibuildwheel@v2.21.3
         env:
-          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
+          CIBW_BUILD: cp310-manylinux_x86_64
           CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_*"
           CIBW_ARCHS_LINUX: x86_64
           CIBW_ARCHS_MACOS: x86_64
           CIBW_BUILD_VERBOSITY: 1
+          CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64:latest
+          CIBW_BEFORE_ALL_LINUX: |
+            yum install -y wget make gcc gcc-c++ cmake ninja-build
           CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
 
       - name: Build wheels (CI - all architectures)

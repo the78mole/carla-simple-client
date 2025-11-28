@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "cmake>=3.14", "ninja"]
+requires = ["setuptools>=61.0", "wheel", "distro"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -55,10 +55,11 @@ Issues = "https://github.com/the78mole/carla-simple-client/issues"
 Documentation = "https://github.com/the78mole/carla-simple-client/blob/main/README.md"
 
 [tool.setuptools]
+package-dir = {"" = "PythonAPI/source"}
 packages = ["carla"]
 
 [tool.setuptools.package-data]
-carla = ["*.so", "*.dylib", "*.dll"]
+carla = ["*.so", "*.dylib", "*.dll", "*.pyi"]
 
 [tool.black]
 line-length = 100
