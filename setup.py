@@ -22,7 +22,10 @@ def get_libcarla_extensions():
     root_dir = Path(__file__).parent.resolve()
     deps_install = root_dir / "deps" / "install"
     
-    if not deps_install.exists():
+    # Skip dependency building if explicitly disabled (for CI/packaging)
+    skip_deps = os.environ.get('CARLA_SKIP_DEPS', '').lower() in ('1', 'true', 'yes')
+    
+    if not deps_install.exists() and not skip_deps:
         print("Building dependencies...")
         setup_script = root_dir / "scripts" / "setup-dependencies.sh"
         if setup_script.exists():
@@ -31,6 +34,14 @@ def get_libcarla_extensions():
                 cwd=root_dir,
                 check=True,
             )
+    elif skip_deps:
+        print("Dependency building skipped (CARLA_SKIP_DEPS set)")
+        
+    if not deps_install.exists():
+        raise RuntimeError(
+            f"Dependencies not found at {deps_install}. "
+            f"Run './scripts/setup-dependencies.sh' or unset CARLA_SKIP_DEPS."
+        )
     
     # Setup paths
     carla_install = deps_install / "libcarla-client"
@@ -56,35 +67,49 @@ def get_libcarla_extensions():
     # Linux-specific configuration
     if os.name == "posix":
         pwd = str(root_dir)
-        # Find available boost_python library
-        lib_dir_path = os.path.join(pwd, 'deps/install/libcarla-client/lib')
-        boost_python_candidates = [
-            f"libboost_python{sys.version_info.major}{sys.version_info.minor}.a",
-            "libboost_python310.a",  # fallback to available version
-            "libboost_python39.a",
-            "libboost_python38.a",
+        # Find available boost_python library in both possible locations
+        lib_dirs = [
+            os.path.join(pwd, 'deps/install/boost-1.84.0/lib'),
+            os.path.join(pwd, 'deps/install/libcarla-client/lib')
         ]
         
+        # Find any available boost_python library
+        import glob
+        
         pylib = None
-        for candidate in boost_python_candidates:
-            if os.path.exists(os.path.join(lib_dir_path, candidate)):
-                pylib = candidate
-                break
+        pylib_path = None
+        for lib_dir in lib_dirs:
+            if os.path.exists(lib_dir):
+                # Get all boost_python*.a files in directory
+                boost_files = glob.glob(os.path.join(lib_dir, 'libboost_python*.a'))
+                if boost_files:
+                    # Use the first one found
+                    pylib_path = boost_files[0]
+                    pylib = os.path.basename(pylib_path)
+                    print(f"Found boost_python library: {pylib} in {lib_dir}")
+                    break
         
         if not pylib:
-            raise RuntimeError(f"No boost_python library found in {lib_dir_path}")
+            # Debug information
+            print("Debug: Searched in directories:")
+            for lib_dir in lib_dirs:
+                if os.path.exists(lib_dir):
+                    files = [f for f in os.listdir(lib_dir) if 'boost' in f]
+                    print(f"  {lib_dir}: {files}")
+            
+            raise RuntimeError(f"No boost_python library found in {lib_dirs}")
         
-        print(f"Using boost_python library: {pylib}")
+        print(f"Using boost_python library: {pylib} at {pylib_path}")
         
         extra_link_args = [
             '-Wl,--whole-archive',
             os.path.join(pwd, 'deps/install/libcarla-client/lib/libcarla_client.a'),
             os.path.join(pwd, 'deps/install/libcarla-client/lib/librpc.a'),
-            os.path.join(pwd, 'deps/install/libcarla-client/lib/libboost_filesystem.a'),
+            os.path.join(pwd, 'deps/install/boost-1.84.0/lib/libboost_filesystem.a'),
             os.path.join(pwd, 'deps/install/libcarla-client/lib/libRecast.a'),
             os.path.join(pwd, 'deps/install/libcarla-client/lib/libDetour.a'),
             os.path.join(pwd, 'deps/install/libcarla-client/lib/libDetourCrowd.a'),
-            os.path.join(pwd, 'deps/install/libcarla-client/lib', pylib),
+            pylib_path,  # Use the full path we found
             os.path.join(pwd, 'deps/install/libcarla-client/lib/libpng.a'),
             '-Wl,--no-whole-archive',
             '-lstdc++',
