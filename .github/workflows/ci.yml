@@ -72,6 +72,8 @@ jobs:
         os: [ubuntu-22.04, ubuntu-24.04]
         arch: [x86_64]
         include:
+          - os: ubuntu-22.04
+            arch: aarch64
           - os: ubuntu-24.04
             arch: aarch64
 
@@ -104,13 +106,7 @@ jobs:
       - name: Build C++ client (x86_64)
         if: matrix.arch == 'x86_64'
         run: |
-          echo "PWD: $(pwd)"
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          echo "Makefile exists: $(ls -la Makefile 2>/dev/null || echo 'NOT FOUND')"
-          echo "Files in current dir: $(ls -la | head -20)"
-          cd $GITHUB_WORKSPACE || cd /home/daniel/GIT/carla-simple-client
-          echo "After cd PWD: $(pwd)"
-          echo "Makefile after cd: $(ls -la Makefile 2>/dev/null || echo 'NOT FOUND')"
+          cd $GITHUB_WORKSPACE
           make build-x86_64
 
       - name: Build C++ client (ARM64)
@@ -118,7 +114,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE
           # Build Docker image first for ARM64 cross-compilation
-          docker build -t carla-arm64-builder:latest build-containers/x86_64-cross-arm64-ubuntu-22.04/
+          docker build -t carla-arm64-builder:latest $GITHUB_WORKSPACE/build-containers/x86_64-cross-arm64-ubuntu-22.04/
           make build-arm64
 
       - name: Upload build artifacts
@@ -156,7 +152,7 @@ jobs:
       - name: Build dependencies (for real CI)
         if: ${{ !env.ACT }}
         run: ./scripts/setup-dependencies.sh
-        
+
       - name: Build wheels (act - skip complex wheel building)
         if: ${{ env.ACT }}
         run: |
