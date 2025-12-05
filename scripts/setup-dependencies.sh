@@ -233,7 +233,7 @@ build_recast() {
 # libpng
 # ==============================================================================
 
-LIBPNG_VERSION="1.6.37"
+LIBPNG_VERSION="1.6.43"
 LIBPNG_INSTALL_DIR="${INSTALL_DIR}/libpng-${LIBPNG_VERSION}"
 
 build_libpng() {

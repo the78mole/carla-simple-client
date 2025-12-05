@@ -71,7 +71,9 @@ def main():
             return 1
 
         spawn_point = random.choice(spawn_points)
-        print(f"Spawning at: ({spawn_point.location.x:.1f}, {spawn_point.location.y:.1f}, {spawn_point.location.z:.1f})")
+        print(
+            f"Spawning at: ({spawn_point.location.x:.1f}, {spawn_point.location.y:.1f}, {spawn_point.location.z:.1f})"
+        )
 
         # Spawn the vehicle
         vehicle = world.spawn_actor(blueprint, spawn_point)

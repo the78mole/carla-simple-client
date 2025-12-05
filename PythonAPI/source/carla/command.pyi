@@ -235,9 +235,7 @@ class ApplyVehicleAckermannControl(_IsCommand):
     # endregion
 
     # region Methods
-    def __init__(
-        self, actor: Actor | int, control: AckermannControllerSettings
-    ) -> None:
+    def __init__(self, actor: Actor | int, control: AckermannControllerSettings) -> None:
         """Applies a certain akermann control to a vehicle.
 
         Args:

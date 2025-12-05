@@ -73,6 +73,16 @@ target-version = "py38"
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "T20"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Allow print statements in example scripts and setup.py (they are CLI tools)
+"examples/**/*.py" = ["T20"]
+"setup.py" = ["T20", "C416", "UP031"]
+# Ignore CARLA's original Python API code (from upstream)
+"PythonAPI/**/*.py" = ["F403", "F405", "T20", "W293", "I001", "E402"]
+"PythonAPI/**/*.pyi" = ["UP007", "UP036", "UP045", "A002", "A001", "B008"]
+# Also ignore the carla module (copy of upstream code)
+"carla/**/*.py" = ["F403", "F405", "T20", "W293", "I001", "E402"]
+
 [tool.mypy]
 python_version = "3.8"
 warn_return_any = true
@@ -92,8 +102,9 @@ skip = ["*-win32", "*-manylinux_i686", "*-musllinux_*"]
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64", "aarch64"]
-manylinux-x86_64-image = "manylinux_2_35"
-manylinux-aarch64-image = "manylinux_2_35"
+# Use manylinux_2_28 as it's well-supported (GLIBC 2.28+)
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
 archs = ["x86_64", "arm64"]

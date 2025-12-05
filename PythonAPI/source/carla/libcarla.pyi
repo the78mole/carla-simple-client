@@ -64,9 +64,7 @@ else:
 __SensorData = TypeVar("__SensorData", bound=SensorData)
 """Generic that allows subclassing."""
 
-__Actor = TypeVar(
-    "__Actor", bound=Actor, default=Actor, infer_variance=True
-)  # noqa: F405
+__Actor = TypeVar("__Actor", bound=Actor, default=Actor, infer_variance=True)  # noqa: F405
 """Generic Actor type that allows subclassing."""
 
 @type_check_only
@@ -428,14 +426,10 @@ class ActorAttribute:
 
     # region Dunder Methods
     def __bool__(self) -> bool: ...
-    def __eq__(
-        self, other: Union[bool, float, str, Color, ActorAttribute], /
-    ) -> bool: ...
+    def __eq__(self, other: Union[bool, float, str, Color, ActorAttribute], /) -> bool: ...
     def __float__(self) -> float: ...
     def __int__(self) -> int: ...
-    def __ne__(
-        self, other: Union[bool, float, str, Color, ActorAttribute], /
-    ) -> bool: ...
+    def __ne__(self, other: Union[bool, float, str, Color, ActorAttribute], /) -> bool: ...
     def __nonzero__(self) -> bool: ...
     def __str__(self) -> str: ...
     # endregion
@@ -547,9 +541,7 @@ class ActorList(Generic[__Actor]):
     # Heuristic to infer type without Generic
 
     @overload
-    def filter(
-        self, wildcard_pattern: Literal["traffic_light.*"]
-    ) -> ActorList[TrafficLight]: ...
+    def filter(self, wildcard_pattern: Literal["traffic_light.*"]) -> ActorList[TrafficLight]: ...
     @overload
     def filter(self, wildcard_pattern: Literal["vehicle.*"]) -> ActorList[Vehicle]: ...
     @overload
@@ -869,9 +861,7 @@ class Client:
 
     # region Methods
 
-    def __init__(
-        self, host: str = "127.0.0.1", port: int = 2000, worker_threads: int = 0
-    ) -> None:
+    def __init__(self, host: str = "127.0.0.1", port: int = 2000, worker_threads: int = 0) -> None:
         """Client constructor.
 
         Args:
@@ -880,9 +870,7 @@ class Client:
             `worker_threads (int, optional)`: Number of working threads used for background updates. If 0, use all available concurrency. Defaults to 0.
         """
 
-    def apply_batch(
-        self, commands: Sequence[command._IsCommand], do_tick: bool = False
-    ) -> None:
+    def apply_batch(self, commands: Sequence[command._IsCommand], do_tick: bool = False) -> None:
         """Executes a list of commands on a single simulation step and retrieves no information.
 
         If you need information about the response of each command, use the `apply_batch_sync()` method. Here is an example on how to delete the actors that appear in `carla.ActorList` all at once.
@@ -1024,9 +1012,7 @@ class Client:
             `str`
         """
 
-    def show_recorder_collisions(
-        self, filename: str, category1: str, category2: str
-    ) -> str:
+    def show_recorder_collisions(self, filename: str, category1: str, category2: str) -> str:
         """The terminal will show the collisions registered by the recorder. These can be filtered by specifying the type of actor involved. The categories will be specified in `category1` and `category2` as follows: 'h' = Hero, the one vehicle that can be controlled manually or managed by the user. 'v' = Vehicle 'w' = Walker 't' = Traffic light 'o' = Other 'a' = Any If you want to see only collisions between a vehicles and a walkers, use for `category1` as 'v' and `category2` as 'w' or vice versa. If you want to see all the collisions (filter off) you can use 'a' for both parameters.
 
         Args:
@@ -1552,9 +1538,7 @@ class FloatColor:
     # endregion
 
     # region Methods
-    def __init__(
-        self, r: float = 0.0, g: float = 0.0, b: float = 0.0, a: float = 1.0
-    ) -> None:
+    def __init__(self, r: float = 0.0, g: float = 0.0, b: float = 0.0, a: float = 1.0) -> None:
         """Initializes a color, black by default.
 
         Args:
@@ -1642,9 +1626,7 @@ class GearPhysicsControl:
     # endregion
 
     # region Methods
-    def __init__(
-        self, ratio: float = 1.0, down_ratio: float = 0.5, up_ratio: float = 0.65
-    ) -> None:
+    def __init__(self, ratio: float = 1.0, down_ratio: float = 0.5, up_ratio: float = 0.65) -> None:
         """Class that provides access to vehicle transmission details by defining a gear and when to run on it. This will be later used by `carla.VehiclePhysicsControl` to help simulate physics.
 
         Args:
@@ -1770,9 +1752,7 @@ class Image(SensorData):
             `color_converter (ColorConverter)`
         """
 
-    def save_to_disk(
-        self, path: str, color_converter: ColorConverter = ColorConverter.Raw
-    ):
+    def save_to_disk(self, path: str, color_converter: ColorConverter = ColorConverter.Raw):
         """Saves the image to disk using a converter pattern stated as `color_converter`. The default conversion pattern is `Raw` that will make no changes to the image.
 
         Args:
@@ -1985,9 +1965,7 @@ class LandmarkType(Enum):
     Highway = "330"
     DeadEnd = "357"
     RecomendedSpeed = "380"  # NOTE: Wrong Spelling, but is named like this internally!
-    RecomendedSpeedEnd = (
-        "381"  # NOTE: Wrong Spelling, but is named like this internally!
-    )
+    RecomendedSpeedEnd = "381"  # NOTE: Wrong Spelling, but is named like this internally!
     # endregion
 
 class LaneChange(IntFlag, _CarlaEnum):
@@ -2682,9 +2660,7 @@ class Map:
             `lane_type (_type_, optional)`: Limits the search for nearest lane to one or various lane types that can be flagged. Defaults to LaneType.Driving.
         """
 
-    def get_waypoint_xodr(
-        self, road_id: int, lane_id: int, s: float
-    ) -> Waypoint | None:
+    def get_waypoint_xodr(self, road_id: int, lane_id: int, s: float) -> Waypoint | None:
         """Returns a waypoint if all the parameters passed are correct. Otherwise, returns `None`.
 
         Args:
@@ -4102,9 +4078,7 @@ class Vehicle(Actor):
         + Getter: `carla.Vehicle.get_light_state`
         """
 
-    def set_wheel_steer_direction(
-        self, wheel_location: VehicleWheelLocation, angle_in_deg: float
-    ):
+    def set_wheel_steer_direction(self, wheel_location: VehicleWheelLocation, angle_in_deg: float):
         """Sets the angle of a vehicle's wheel visually.
 
         + Warning: Does not affect the physics of the vehicle.
@@ -4732,9 +4706,7 @@ class Waypoint:
     def get_junction(self) -> Junction:
         """If the waypoint belongs to a junction this method returns the associated junction object. Otherwise returns `null`."""
 
-    def get_landmarks(
-        self, distance: float, stop_at_junction: bool = False
-    ) -> list[Landmark]:
+    def get_landmarks(self, distance: float, stop_at_junction: bool = False) -> list[Landmark]:
         """Returns a list of landmarks in the road from the current waypoint until the specified distance.
 
         Args:
@@ -5025,9 +4997,7 @@ class World:
     ):
         """Applies all texture fields in `carla.MaterialParameter` to all objects in `objects_name_list`. Empty textures here will not be applied."""
 
-    def cast_ray(
-        self, initial_location: Location, final_location: Location
-    ) -> list[LabelledPoint]:
+    def cast_ray(self, initial_location: Location, final_location: Location) -> list[LabelledPoint]:
         """Casts a ray from the specified initial_location to final_location. The function then detects all geometries intersecting the ray and returns a list of `carla.LabelledPoint` in order.
 
         Args:
@@ -5046,9 +5016,7 @@ class World:
     def freeze_all_traffic_lights(self, frozen: bool):
         """Freezes or unfreezes all traffic lights in the scene. Frozen traffic lights can be modified by the user but the time will not update them until unfrozen."""
 
-    def ground_projection(
-        self, location: Location, search_distance: float
-    ) -> LabelledPoint:
+    def ground_projection(self, location: Location, search_distance: float) -> LabelledPoint:
         """Projects the specified point downwards in the scene. The functions casts a ray from location in the direction (0,0,-1) (downwards) and returns a `carla.LabelledPoint` object with the first geometry this ray intersects (usually the ground). If no geometry is found in the search_distance range the function returns `None`.
 
         Args:
@@ -5198,9 +5166,7 @@ class World:
             `object_type (CityObjectLabel, optional)`: Semantic tag of the EnvironmentObjects that are returned. Defaults to CityObjectLabel.Any.
         """
 
-    def get_level_bbs(
-        self, actor_type: CityObjectLabel = CityObjectLabel.Any
-    ) -> list[BoundingBox]:
+    def get_level_bbs(self, actor_type: CityObjectLabel = CityObjectLabel.Any) -> list[BoundingBox]:
         """Returns an array of bounding boxes with location and rotation in world space. The method returns all the bounding boxes in the level by default, but the query can be filtered by semantic tags with the argument `actor_type`.
 
         Args:
@@ -5242,9 +5208,7 @@ class World:
             `landmark (Landmark)`: The landmark object describing a traffic light.
         """
 
-    def get_traffic_light_from_opendrive_id(
-        self, traffic_light_id: str
-    ) -> TrafficLight:
+    def get_traffic_light_from_opendrive_id(self, traffic_light_id: str) -> TrafficLight:
         """Returns the traffic light actor corresponding to the indicated OpenDRIVE id.
 
         Args:
