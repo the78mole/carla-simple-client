@@ -16,7 +16,18 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Build settings
 CARLA_BRANCH="ue4/0.9.16"
-BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
+# Cross-platform CPU count detection
+if command -v nproc >/dev/null 2>&1; then
+    # Linux
+    DEFAULT_JOBS=$(nproc)
+elif command -v sysctl >/dev/null 2>&1; then
+    # macOS
+    DEFAULT_JOBS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+else
+    # Fallback
+    DEFAULT_JOBS=4
+fi
+BUILD_JOBS="${BUILD_JOBS:-${DEFAULT_JOBS}}"
 BUILD_DIR="${PROJECT_ROOT}/deps/build"
 INSTALL_DIR="${PROJECT_ROOT}/deps/install"
 DOWNLOAD_DIR="${PROJECT_ROOT}/deps/downloads"
