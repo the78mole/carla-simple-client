@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# Limit permissions for security
+permissions:
+  contents: read
+
 jobs:
   lint-python:
     name: Lint Python on ${{ matrix.os }}
