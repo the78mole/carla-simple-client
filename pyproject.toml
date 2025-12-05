@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel", "distro"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "carla-client"
+version = "0.9.16"
+description = "Python client library for CARLA Simulator (ue4/0.9.16 branch)"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Daniel Glaser", email = "the78mole@gmail.com"},
+]
+maintainers = [
+    {name = "Daniel Glaser", email = "the78mole@gmail.com"},
+]
+keywords = ["carla", "simulator", "autonomous-driving", "robotics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "numpy>=1.19.0",
+    "pillow>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/the78mole/carla-simple-client"
+Repository = "https://github.com/the78mole/carla-simple-client"
+Issues = "https://github.com/the78mole/carla-simple-client/issues"
+Documentation = "https://github.com/the78mole/carla-simple-client/blob/main/README.md"
+
+[tool.setuptools]
+package-dir = {"" = "PythonAPI/source"}
+packages = ["carla"]
+
+[tool.setuptools.package-data]
+carla = ["*.so", "*.dylib", "*.dll", "*.pyi"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "T20"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Allow print statements in example scripts and setup.py (they are CLI tools)
+"examples/**/*.py" = ["T20"]
+"setup.py" = ["T20", "C416", "UP031"]
+# Ignore CARLA's original Python API code (from upstream)
+"PythonAPI/**/*.py" = ["F403", "F405", "T20", "W293", "I001", "E402"]
+"PythonAPI/**/*.pyi" = ["UP007", "UP036", "UP045", "A002", "A001", "B008"]
+# Also ignore the carla module (copy of upstream code)
+"carla/**/*.py" = ["F403", "F405", "T20", "W293", "I001", "E402"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=carla --cov-report=term-missing"
+
+[tool.cibuildwheel]
+build = ["cp38-*", "cp39-*", "cp310-*", "cp311-*", "cp312-*"]
+skip = ["*-win32", "*-manylinux_i686", "*-musllinux_*"]
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+# Use manylinux_2_28 as it's well-supported (GLIBC 2.28+)
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+# Build dependencies inside the container to avoid glibc incompatibility
+before-all = "./scripts/setup-dependencies.sh"
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+before-all = "./scripts/setup-dependencies.sh"

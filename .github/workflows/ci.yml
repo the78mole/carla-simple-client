@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Limit permissions for security
+permissions:
+  contents: read
+
+jobs:
+  lint-python:
+    name: Lint Python on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-15]
+        python-version: ['3.11']
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Run linting with uvx
+        run: |
+          uvx ruff check .
+          uvx black --check .
+
+  build-cpp:
+    name: Build C++ on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        arch: [x86_64]
+        # ARM64 cross-compilation builds skipped - build-containers not yet available
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build git wget \
+            libpng-dev libtiff-dev libjpeg-dev \
+            python3-dev python3-pip \
+            autoconf automake libtool
+
+      - name: Build dependencies (x86_64)
+        run: ./scripts/setup-dependencies.sh
+
+      - name: Build C++ client (x86_64)
+        run: |
+          # Use paths from setup-dependencies.sh
+          DEPS_INSTALL="${PWD}/deps/install"
+          LIBCARLA_INSTALL="${DEPS_INSTALL}/libcarla-client"
+          
+          # Build LibCarla using the CMake config from setup-dependencies.sh
+          mkdir -p build/x86_64/libcarla
+          cd build/x86_64/libcarla
+          cmake ../../../LibCarla/cmake \
+            -DCMAKE_BUILD_TYPE=Client \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            -DLIBCARLA_BUILD_RELEASE=ON \
+            -DLIBCARLA_BUILD_DEBUG=OFF \
+            -DLIBCARLA_BUILD_TEST=OFF \
+            -DCMAKE_CXX_FLAGS="-std=c++14 -fPIC -O3 -DNDEBUG -isystem ${DEPS_INSTALL}/boost-1.84.0/include -isystem ${DEPS_INSTALL}/rpclib-v2.2.1_c5/include -isystem ${DEPS_INSTALL}/recast/include -isystem ${DEPS_INSTALL}/libpng-1.6.43/include" \
+            -G Ninja
+          ninja install
+          cd ../../..
+          
+          # Build third-party libs
+          mkdir -p build/x86_64/third-party
+          cd build/x86_64/third-party
+          g++ -std=c++14 -fPIC -O3 -DNDEBUG \
+            -c ../../../LibCarla/source/third-party/odrSpiral/odrSpiral.cpp -o odrSpiral.o
+          g++ -std=c++14 -fPIC -O3 -DNDEBUG \
+            -c ../../../LibCarla/source/third-party/pugixml/pugixml.cpp -o pugixml.o
+          ar rcs libcarla_third_party.a odrSpiral.o pugixml.o
+          cd ../../..
+          
+          # Build example
+          cd examples/cpp_client
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -G Ninja
+          ninja
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: cpp-client-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            examples/cpp_client/build/cpp_client
+
+  build-wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-15]
+
+    steps:
+      - name: Skip macOS in act
+        if: ${{ env.ACT && matrix.os == 'macos-15' }}
+        run: |
+          echo "Skipping macOS build in act environment"
+          exit 0
+
+      - uses: actions/checkout@v6
+        if: ${{ !env.ACT || matrix.os != 'macos-15' }}
+
+      - name: Set up QEMU (for ARM64 builds on Linux)
+        if: ${{ runner.os == 'Linux' && !env.ACT && matrix.os != 'macos-15' }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+
+      - name: Build wheels (act - skip complex wheel building)
+        if: ${{ env.ACT }}
+        run: |
+          echo "Skipping wheel building in act environment"
+          echo "Reason: manylinux containers have limited build tools"
+          echo "Wheel building works correctly on real GitHub Actions"
+          mkdir -p wheelhouse
+          echo "act test passed" > wheelhouse/.keep
+
+      - name: Build wheels (CI - Linux)
+        if: ${{ !env.ACT && runner.os == 'Linux' }}
+        uses: pypa/cibuildwheel@v2.21.3
+        env:
+          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_ARCHS: "x86_64"
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_BEFORE_ALL_LINUX: |
+            yum install -y ninja-build wget git || dnf install -y ninja-build wget git || apt-get install -y ninja-build wget git || true
+            ./scripts/setup-dependencies.sh
+          CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
+      
+      - name: Build wheels (CI - macOS)
+        if: ${{ !env.ACT && runner.os == 'macOS' }}
+        uses: pypa/cibuildwheel@v2.21.3
+        env:
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+          CIBW_ARCHS: "arm64"
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_BEFORE_ALL_MACOS: |
+            brew install ninja || true
+            ./scripts/setup-dependencies.sh
+          CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
+
+      - name: Upload wheels
+        if: ${{ !env.ACT || matrix.os != 'macos-15' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
