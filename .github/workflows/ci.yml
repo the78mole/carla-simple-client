@@ -78,18 +78,72 @@ jobs:
 
       - name: Build C++ client (x86_64)
         if: matrix.arch == 'x86_64'
-        run: make build-x86_64
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            carla-x86_64-native:ubuntu-22.04 \
+            bash /workspace/build-containers/x86_64-native-ubuntu-22.04/build-native-examples.sh
 
       - name: Build C++ client (ARM64)
         if: matrix.arch == 'arm64'
-        run: make build-arm64
+        run: |
+          # Run all build steps in the Docker container
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            carla-arm64-builder:latest \
+            bash -c '
+              # Build dependencies
+              bash /workspace/build-containers/x86_64-cross-arm64-ubuntu-22.04/build-arm64-deps.sh
+              
+              # Build LibCarla
+              mkdir -p /workspace/build/aarch64/libcarla
+              cd /workspace/build/aarch64/libcarla
+              cmake /workspace/LibCarla/cmake \
+                -DCMAKE_TOOLCHAIN_FILE=/workspace/cmake/toolchain-arm64.cmake \
+                -DCMAKE_BUILD_TYPE=Client \
+                -DCMAKE_INSTALL_PREFIX=/workspace/build/aarch64/libcarla/install \
+                -DLIBCARLA_BUILD_RELEASE=ON \
+                -DLIBCARLA_BUILD_DEBUG=OFF \
+                -DLIBCARLA_BUILD_TEST=OFF \
+                -DRPCLIB_INCLUDE_PATH=/workspace/deps/aarch64/install/rpclib-2.2.1/include \
+                -DBOOST_INCLUDE_PATH=/workspace/deps/aarch64/install/boost-1.84.0/include \
+                -DRECAST_INCLUDE_PATH=/workspace/deps/aarch64/install/recast-1.6.0/include \
+                -DLIBPNG_INCLUDE_PATH=/workspace/deps/aarch64/install/libpng-1.6.37/include \
+                -G Ninja
+              ninja install
+              
+              # Build third-party
+              mkdir -p /workspace/build/aarch64/third-party
+              cd /workspace/build/aarch64/third-party
+              aarch64-linux-gnu-g++ -std=c++14 -fPIC -O3 -DNDEBUG \
+                -c /workspace/LibCarla/source/third-party/odrSpiral/odrSpiral.cpp -o odrSpiral.o
+              aarch64-linux-gnu-g++ -std=c++14 -fPIC -O3 -DNDEBUG \
+                -c /workspace/LibCarla/source/third-party/pugixml/pugixml.cpp -o pugixml.o
+              aarch64-linux-gnu-ar rcs libcarla_third_party.a odrSpiral.o pugixml.o
+              
+              # Build example client
+              mkdir -p /workspace/build/aarch64/cpp_client
+              cd /workspace/build/aarch64/cpp_client
+              aarch64-linux-gnu-g++ -std=c++14 -pthread -fPIC -O3 -DNDEBUG \
+                -DBOOST_ERROR_CODE_HEADER_ONLY \
+                -I/workspace/build/aarch64/libcarla/install/include \
+                -I/workspace/deps/aarch64/install/rpclib-2.2.1/include \
+                -I/workspace/deps/aarch64/install/boost-1.84.0/include \
+                -I/workspace/deps/aarch64/install/recast-1.6.0/include \
+                -o cpp_client /workspace/examples/cpp_client/main.cpp \
+                /workspace/build/aarch64/libcarla/install/lib/libcarla_client.a \
+                /workspace/build/aarch64/third-party/libcarla_third_party.a \
+                /workspace/deps/aarch64/install/rpclib-2.2.1/lib/librpc.a \
+                /workspace/deps/aarch64/install/boost-1.84.0/lib/libboost_filesystem.a \
+                /workspace/deps/aarch64/install/boost-1.84.0/lib/libboost_system.a \
+                /workspace/deps/aarch64/install/libpng-1.6.37/lib/libpng.a \
+                -lz
+            '
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
           name: cpp-client-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            examples/cpp_client/cpp_client
+            build/x86_64/cpp_client/cpp_client
             build/aarch64/cpp_client/cpp_client
 
   build-wheels:
@@ -126,7 +180,15 @@ jobs:
 
       - name: Build wheels (Linux)
         if: ${{ runner.os == 'Linux' && !env.ACT }}
-        run: make wheel-x86_64
+        run: |
+          # Build dependencies and LibCarla first
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            carla-x86_64-native:ubuntu-22.04 \
+            bash /workspace/build-containers/x86_64-native-ubuntu-22.04/build-native-examples.sh
+          # Now build the Python wheel
+          docker run --rm -v "$PWD:/workspace" -w /workspace \
+            carla-x86_64-native:ubuntu-22.04 \
+            bash -c 'python3 -m pip install --upgrade pip build wheel && python3 -m build --wheel'
 
       - name: Build wheels (act - skip complex wheel building)
         if: ${{ env.ACT }}
