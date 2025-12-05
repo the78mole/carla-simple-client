@@ -47,8 +47,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, ubuntu-24.04]
-        arch: [x86_64]
-        # ARM64 cross-compilation builds skipped - build-containers not yet available
+        arch: [x86_64, arm64]
 
     steps:
       - uses: actions/checkout@v6
@@ -63,54 +62,35 @@ jobs:
             python3-dev python3-pip \
             autoconf automake libtool
 
-      - name: Build dependencies (x86_64)
-        run: ./scripts/setup-dependencies.sh
+      - name: Setup Docker image for builds (x86_64)
+        if: matrix.arch == 'x86_64'
+        run: |
+          docker build -f build-containers/x86_64-native-ubuntu-22.04/Dockerfile \
+            -t carla-x86_64-native:ubuntu-22.04 \
+            build-containers/x86_64-native-ubuntu-22.04/
+
+      - name: Setup Docker image for builds (ARM64)
+        if: matrix.arch == 'arm64'
+        run: |
+          docker build -f build-containers/x86_64-cross-arm64-ubuntu-22.04/Dockerfile \
+            -t carla-arm64-builder:latest \
+            build-containers/x86_64-cross-arm64-ubuntu-22.04/
 
       - name: Build C++ client (x86_64)
-        run: |
-          # Use paths from setup-dependencies.sh
-          DEPS_INSTALL="${PWD}/deps/install"
-          LIBCARLA_INSTALL="${DEPS_INSTALL}/libcarla-client"
-          
-          # Build LibCarla using the CMake config from setup-dependencies.sh
-          mkdir -p build/x86_64/libcarla
-          cd build/x86_64/libcarla
-          cmake ../../../LibCarla/cmake \
-            -DCMAKE_BUILD_TYPE=Client \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DLIBCARLA_BUILD_RELEASE=ON \
-            -DLIBCARLA_BUILD_DEBUG=OFF \
-            -DLIBCARLA_BUILD_TEST=OFF \
-            -DCMAKE_CXX_FLAGS="-std=c++14 -fPIC -O3 -DNDEBUG -isystem ${DEPS_INSTALL}/boost-1.84.0/include -isystem ${DEPS_INSTALL}/rpclib-v2.2.1_c5/include -isystem ${DEPS_INSTALL}/recast/include -isystem ${DEPS_INSTALL}/libpng-1.6.43/include" \
-            -G Ninja
-          ninja install
-          cd ../../..
-          
-          # Build third-party libs
-          mkdir -p build/x86_64/third-party
-          cd build/x86_64/third-party
-          g++ -std=c++14 -fPIC -O3 -DNDEBUG \
-            -c ../../../LibCarla/source/third-party/odrSpiral/odrSpiral.cpp -o odrSpiral.o
-          g++ -std=c++14 -fPIC -O3 -DNDEBUG \
-            -c ../../../LibCarla/source/third-party/pugixml/pugixml.cpp -o pugixml.o
-          ar rcs libcarla_third_party.a odrSpiral.o pugixml.o
-          cd ../../..
-          
-          # Build example
-          cd examples/cpp_client
-          mkdir -p build
-          cd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -G Ninja
-          ninja
+        if: matrix.arch == 'x86_64'
+        run: make build-x86_64
+
+      - name: Build C++ client (ARM64)
+        if: matrix.arch == 'arm64'
+        run: make build-arm64
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
           name: cpp-client-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            examples/cpp_client/build/cpp_client
+            examples/cpp_client/cpp_client
+            build/aarch64/cpp_client/cpp_client
 
   build-wheels:
     name: Build wheels on ${{ matrix.os }}
@@ -131,34 +111,35 @@ jobs:
         if: ${{ !env.ACT || matrix.os != 'macos-15' }}
 
       - name: Set up QEMU (for ARM64 builds on Linux)
-        if: ${{ runner.os == 'Linux' && !env.ACT && matrix.os != 'macos-15' }}
+        if: ${{ runner.os == 'Linux' && !env.ACT }}
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
+
+      - name: Build dependencies (Linux)
+        if: ${{ runner.os == 'Linux' && !env.ACT }}
+        run: ./scripts/setup-dependencies.sh
+
+      - name: Build Docker image (Linux)
+        if: ${{ runner.os == 'Linux' && !env.ACT }}
+        run: docker build -t carla-x86_64-native:ubuntu-22.04 -f build-containers/x86_64-native-ubuntu-22.04/Dockerfile build-containers/x86_64-native-ubuntu-22.04/
+
+      - name: Build wheels (Linux)
+        if: ${{ runner.os == 'Linux' && !env.ACT }}
+        run: make wheel-x86_64
 
       - name: Build wheels (act - skip complex wheel building)
         if: ${{ env.ACT }}
         run: |
           echo "Skipping wheel building in act environment"
-          echo "Reason: manylinux containers have limited build tools"
-          echo "Wheel building works correctly on real GitHub Actions"
           mkdir -p wheelhouse
           echo "act test passed" > wheelhouse/.keep
-
-      - name: Build wheels (CI - Linux)
-        if: ${{ !env.ACT && runner.os == 'Linux' }}
-        uses: pypa/cibuildwheel@v2.21.3
-        env:
-          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
-          CIBW_SKIP: "*-musllinux_*"
-          CIBW_ARCHS: "x86_64"
-          CIBW_BUILD_VERBOSITY: 1
-          CIBW_BEFORE_ALL_LINUX: |
-            yum install -y ninja-build || dnf install -y ninja-build || apt-get install -y ninja-build || true
-            ./scripts/setup-dependencies.sh
-          CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
       
-      - name: Build wheels (CI - macOS)
+      - name: Build dependencies (macOS)
+        if: ${{ !env.ACT && runner.os == 'macOS' }}
+        run: ./scripts/setup-dependencies.sh
+
+      - name: Build wheels (macOS)
         if: ${{ !env.ACT && runner.os == 'macOS' }}
         uses: pypa/cibuildwheel@v2.21.3
         env:
@@ -170,8 +151,15 @@ jobs:
             ./scripts/setup-dependencies.sh
           CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
 
-      - name: Upload wheels
-        if: ${{ !env.ACT || matrix.os != 'macos-15' }}
+      - name: Upload wheels (Linux)
+        if: ${{ !env.ACT && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+      - name: Upload wheels (macOS)
+        if: ${{ !env.ACT && runner.os == 'macOS' }}
         uses: actions/upload-artifact@v5
         with:
           name: wheels-${{ matrix.os }}
