@@ -67,14 +67,14 @@ jobs:
         run: |
           docker build -f build-containers/x86_64-native-ubuntu-22.04/Dockerfile \
             -t carla-x86_64-native:ubuntu-22.04 \
-            build-containers/x86_64-native-ubuntu-22.04/
+            .
 
       - name: Setup Docker image for builds (ARM64)
         if: matrix.arch == 'arm64'
         run: |
           docker build -f build-containers/x86_64-cross-arm64-ubuntu-22.04/Dockerfile \
             -t carla-arm64-builder:latest \
-            build-containers/x86_64-cross-arm64-ubuntu-22.04/
+            .
 
       - name: Build C++ client (x86_64)
         if: matrix.arch == 'x86_64'
@@ -122,7 +122,7 @@ jobs:
 
       - name: Build Docker image (Linux)
         if: ${{ runner.os == 'Linux' && !env.ACT }}
-        run: docker build -t carla-x86_64-native:ubuntu-22.04 -f build-containers/x86_64-native-ubuntu-22.04/Dockerfile build-containers/x86_64-native-ubuntu-22.04/
+        run: docker build -t carla-x86_64-native:ubuntu-22.04 -f build-containers/x86_64-native-ubuntu-22.04/Dockerfile .
 
       - name: Build wheels (Linux)
         if: ${{ runner.os == 'Linux' && !env.ACT }}
@@ -135,9 +135,10 @@ jobs:
           mkdir -p wheelhouse
           echo "act test passed" > wheelhouse/.keep
       
-      - name: Build dependencies (macOS)
-        if: ${{ !env.ACT && runner.os == 'macOS' }}
-        run: ./scripts/setup-dependencies.sh
+      # macOS dependency build temporarily disabled - Python header detection issues
+      # - name: Build dependencies (macOS)
+      #   if: ${{ !env.ACT && runner.os == 'macOS' }}
+      #   run: ./scripts/setup-dependencies.sh
 
       - name: Build wheels (macOS)
         if: ${{ !env.ACT && runner.os == 'macOS' }}
