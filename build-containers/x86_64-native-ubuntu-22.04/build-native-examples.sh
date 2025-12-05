@@ -115,7 +115,7 @@ build_libcarla() {
         -DLIBCARLA_BUILD_TEST=OFF \
         -DRPCLIB_INCLUDE_PATH="$DEPS_DIR/include" \
         -DBOOST_INCLUDE_PATH="/usr/include" \
-        -DRECAST_INCLUDE_PATH="/usr/include" \
+        -DRECAST_INCLUDE_PATH="$DEPS_DIR/include" \
         -DLIBPNG_INCLUDE_PATH="/usr/include" \
         -GNinja
     
