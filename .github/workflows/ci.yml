@@ -72,8 +72,9 @@ jobs:
         if: matrix.arch == 'aarch64'
         run: |
           # Docker is needed for ARM64 cross-compilation
-          # Remove conflicting packages first
-          sudo apt-get remove -y containerd runc || true
+          # Remove conflicting packages first (containerd.io from docker repo)
+          sudo apt-get remove -y containerd containerd.io runc docker-ce docker-ce-cli || true
+          sudo apt-get autoremove -y || true
           sudo apt-get install -y docker.io
           sudo systemctl start docker || true
           sudo usermod -aG docker $USER || true
@@ -85,7 +86,11 @@ jobs:
       - name: Build C++ client (x86_64)
         if: matrix.arch == 'x86_64'
         run: |
-          # Build LibCarla
+          # Use paths from setup-dependencies.sh
+          DEPS_INSTALL="${PWD}/deps/install"
+          LIBCARLA_INSTALL="${DEPS_INSTALL}/libcarla-client"
+          
+          # Build LibCarla using the CMake config from setup-dependencies.sh
           mkdir -p build/x86_64/libcarla
           cd build/x86_64/libcarla
           cmake ../../../LibCarla/cmake \
@@ -94,6 +99,7 @@ jobs:
             -DLIBCARLA_BUILD_RELEASE=ON \
             -DLIBCARLA_BUILD_DEBUG=OFF \
             -DLIBCARLA_BUILD_TEST=OFF \
+            -DCMAKE_CXX_FLAGS="-std=c++14 -fPIC -O3 -DNDEBUG -isystem ${DEPS_INSTALL}/boost-1.84.0/include -isystem ${DEPS_INSTALL}/rpclib-v2.2.1_c5/include -isystem ${DEPS_INSTALL}/recast/include -isystem ${DEPS_INSTALL}/libpng-1.6.43/include" \
             -G Ninja
           ninja install
           cd ../../..
@@ -157,10 +163,6 @@ jobs:
         with:
           platforms: all
 
-      - name: Build dependencies (for real CI)
-        if: ${{ !env.ACT }}
-        run: ./scripts/setup-dependencies.sh
-
       - name: Build wheels (act - skip complex wheel building)
         if: ${{ env.ACT }}
         run: |
@@ -176,8 +178,9 @@ jobs:
         env:
           CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
           CIBW_SKIP: "*-musllinux_*"
-          CIBW_ARCHS: "x86_64 aarch64"
+          CIBW_ARCHS: "x86_64"
           CIBW_BUILD_VERBOSITY: 1
+          CIBW_BEFORE_ALL_LINUX: ./scripts/setup-dependencies.sh
           CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
       
       - name: Build wheels (CI - macOS)
@@ -185,8 +188,9 @@ jobs:
         uses: pypa/cibuildwheel@v2.21.3
         env:
           CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
-          CIBW_ARCHS: "x86_64 arm64"
+          CIBW_ARCHS: "arm64"
           CIBW_BUILD_VERBOSITY: 1
+          CIBW_BEFORE_ALL_MACOS: ./scripts/setup-dependencies.sh
           CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
 
       - name: Upload wheels

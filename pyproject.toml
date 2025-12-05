@@ -101,10 +101,13 @@ build = ["cp38-*", "cp39-*", "cp310-*", "cp311-*", "cp312-*"]
 skip = ["*-win32", "*-manylinux_i686", "*-musllinux_*"]
 
 [tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
+archs = ["x86_64"]
 # Use manylinux_2_28 as it's well-supported (GLIBC 2.28+)
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
+# Build dependencies inside the container to avoid glibc incompatibility
+before-all = "./scripts/setup-dependencies.sh"
 
 [tool.cibuildwheel.macos]
-archs = ["x86_64", "arm64"]
+archs = ["arm64"]
+before-all = "./scripts/setup-dependencies.sh"
