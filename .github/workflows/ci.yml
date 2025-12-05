@@ -29,16 +29,10 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Create virtual environment
-        run: uv venv
-
-      - name: Install dev dependencies only
-        run: uv pip install ruff black
-
-      - name: Run linting
+      - name: Run linting with uvx
         run: |
-          uv run ruff check .
-          uv run black --check .
+          uvx ruff check .
+          uvx black --check .
 
   build-cpp:
     name: Build C++ on ${{ matrix.os }}
@@ -154,7 +148,7 @@ jobs:
           CIBW_ARCHS: "x86_64"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_BEFORE_ALL_LINUX: |
-            yum install -y ninja-build || dnf install -y ninja-build || apt-get install -y ninja-build || true
+            yum install -y ninja-build wget git || dnf install -y ninja-build wget git || apt-get install -y ninja-build wget git || true
             ./scripts/setup-dependencies.sh
           CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
       
