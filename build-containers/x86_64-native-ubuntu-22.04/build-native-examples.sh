@@ -106,13 +106,17 @@ build_libcarla() {
     mkdir -p "$LIBCARLA_BUILD"
     cd "$LIBCARLA_BUILD"
     
-    cmake "$WORKSPACE_ROOT/LibCarla" \
-        -DCMAKE_BUILD_TYPE=Release \
+    cmake "$WORKSPACE_ROOT/LibCarla/cmake" \
+        -DCMAKE_BUILD_TYPE=Client \
         -DCMAKE_INSTALL_PREFIX="$DEPS_DIR" \
         -DCMAKE_PREFIX_PATH="$DEPS_DIR" \
         -DLIBCARLA_BUILD_RELEASE=ON \
         -DLIBCARLA_BUILD_DEBUG=OFF \
         -DLIBCARLA_BUILD_TEST=OFF \
+        -DRPCLIB_INCLUDE_PATH="$DEPS_DIR/include" \
+        -DBOOST_INCLUDE_PATH="/usr/include" \
+        -DRECAST_INCLUDE_PATH="/usr/include" \
+        -DLIBPNG_INCLUDE_PATH="/usr/include" \
         -GNinja
     
     ninja
