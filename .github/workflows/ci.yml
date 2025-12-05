@@ -48,12 +48,7 @@ jobs:
         run: ./scripts/setup-dependencies.sh
     
       - name: Install Python package  
-        run: |
-          if [ -n "$ACT" ]; then
-            uv pip install -e ".[dev]"
-          else
-            uv pip install -e ".[dev]" --system
-          fi
+        run: uv pip install -e ".[dev]"
 
       - name: Run linting
         run: |
@@ -103,11 +98,44 @@ jobs:
           sudo systemctl start docker || true
           sudo usermod -aG docker $USER || true
 
+      - name: Build dependencies (x86_64)
+        if: matrix.arch == 'x86_64'
+        run: ./scripts/setup-dependencies.sh
+
       - name: Build C++ client (x86_64)
         if: matrix.arch == 'x86_64'
         run: |
-          cd $GITHUB_WORKSPACE
-          make build-x86_64
+          # Build LibCarla
+          mkdir -p build/x86_64/libcarla
+          cd build/x86_64/libcarla
+          cmake ../../../LibCarla/cmake \
+            -DCMAKE_BUILD_TYPE=Client \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            -DLIBCARLA_BUILD_RELEASE=ON \
+            -DLIBCARLA_BUILD_DEBUG=OFF \
+            -DLIBCARLA_BUILD_TEST=OFF \
+            -G Ninja
+          ninja install
+          cd ../../..
+          
+          # Build third-party libs
+          mkdir -p build/x86_64/third-party
+          cd build/x86_64/third-party
+          g++ -std=c++14 -fPIC -O3 -DNDEBUG \
+            -c ../../../LibCarla/source/third-party/odrSpiral/odrSpiral.cpp -o odrSpiral.o
+          g++ -std=c++14 -fPIC -O3 -DNDEBUG \
+            -c ../../../LibCarla/source/third-party/pugixml/pugixml.cpp -o pugixml.o
+          ar rcs libcarla_third_party.a odrSpiral.o pugixml.o
+          cd ../../..
+          
+          # Build example
+          cd examples/cpp_client
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -G Ninja
+          ninja
 
       - name: Build C++ client (ARM64)
         if: matrix.arch == 'aarch64'
