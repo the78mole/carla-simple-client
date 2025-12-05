@@ -114,7 +114,7 @@ namespace adaptor {
 
   private:
 
-    template <uint64_t I>
+    template <std::size_t I>
     static void copy_to_variant_impl(
         const clmdep_msgpack::object &o,
         boost::variant2::variant<Ts...> &v) {
@@ -124,14 +124,14 @@ namespace adaptor {
       v = o.via.array.ptr[1].as<T>();
     }
 
-    template <uint64_t... Is>
+    template <std::size_t... Is>
     static void copy_to_variant(
         const uint64_t index,
         const clmdep_msgpack::object &o,
         boost::variant2::variant<Ts...> &v,
         std::index_sequence<Is...>) {
       std::initializer_list<int> ({
-        (index == Is ? copy_to_variant_impl<Is>(o, v), 0 : 0)...
+        (index == static_cast<uint64_t>(Is) ? copy_to_variant_impl<Is>(o, v), 0 : 0)...
       });
     }
   };
