@@ -95,3 +95,4 @@ htmlcov/
 
 # Jupyter
 .ipynb_checkpoints/
+_codeql_detected_source_root
