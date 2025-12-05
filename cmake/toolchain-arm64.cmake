@@ -43,6 +43,18 @@ endif()
 set(CMAKE_C_FLAGS_INIT "-fPIC")
 set(CMAKE_CXX_FLAGS_INIT "-std=c++14 -fPIC -pthread")
 
+# Set ARM64 system library paths
+set(CMAKE_SYSROOT "")
+set(ARM64_LIB_PATH /usr/lib/aarch64-linux-gnu)
+set(ARM64_INCLUDE_PATH /usr/include)
+
+# Configure find paths for ARM64 libraries
+set(CMAKE_FIND_ROOT_PATH 
+    ${ARM64_LIB_PATH}
+    ${ARM64_INCLUDE_PATH}
+    /usr/aarch64-linux-gnu
+)
+
 # Search for programs in the build host directories
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 
@@ -51,16 +63,20 @@ set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
-# Sysroot for cross-compilation (optional)
-# Set this if you have a specific ARM64 sysroot
-# set(CMAKE_SYSROOT "/path/to/arm64-sysroot")
+# Ignore x86_64 dependencies and use system libraries
+set(CMAKE_IGNORE_PATH "/work/deps;/work/deps/install")
+set(CMAKE_PREFIX_PATH "${ARM64_LIB_PATH}")
 
-# pkg-config for cross-compilation (only if sysroot is set)
-if(CMAKE_SYSROOT)
-    set(ENV{PKG_CONFIG_PATH} "")
-    set(ENV{PKG_CONFIG_LIBDIR} "${CMAKE_SYSROOT}/usr/lib/aarch64-linux-gnu/pkgconfig:${CMAKE_SYSROOT}/usr/share/pkgconfig")
-endif()
+# Force library paths for ARM64
+set(PNG_ROOT "/usr")
+set(ZLIB_ROOT "/usr")
+set(ZLIB_LIBRARY "${ARM64_LIB_PATH}/libz.a")
+set(ZLIB_INCLUDE_DIR "${ARM64_INCLUDE_PATH}")
+set(PNG_PNG_INCLUDE_DIR "${ARM64_INCLUDE_PATH}")
+set(PNG_LIBRARY "${ARM64_LIB_PATH}/libpng16.a")
 
 message(STATUS "ARM64 Cross-Compilation Toolchain")
 message(STATUS "  C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "  C++ Compiler: ${CMAKE_CXX_COMPILER}")
+message(STATUS "  Architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "  Dependencies: deps/aarch64")

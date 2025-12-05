@@ -1,0 +1,507 @@
+// Copyright (c) 2017 Computer Vision Center (CVC) at the Universitat Autonoma
+// de Barcelona (UAB).
+//
+// This work is licensed under the terms of the MIT license.
+// For a copy, see <https://opensource.org/licenses/MIT\>.
+
+#include "Simulator.h"
+
+#include "carla/client/Actor.h"
+#include "carla/client/BlueprintLibrary.h"
+#include "carla/client/Map.h"
+#include "carla/client/Sensor.h"
+#include "carla/client/Waypoint.h"
+#include "carla/client/World.h"
+#include "carla/client/WorldSnapshot.h"
+#include "carla/client/detail/ActorFactory.h"
+#include "carla/client/detail/EpisodeProxy.h"
+#include "carla/client/detail/EpisodeState.h"
+// Navigation includes removed for ARM64 build
+
+#include "carla/rpc/Actor.h"
+#include "carla/rpc/ActorDefinition.h"
+#include "carla/rpc/ActorId.h"
+#include "carla/rpc/Command.h"
+#include "carla/rpc/CommandResponse.h"
+#include "carla/rpc/DebugShape.h"
+#include "carla/rpc/EpisodeInfo.h"
+#include "carla/rpc/EpisodeSettings.h"
+#include "carla/rpc/MapInfo.h"
+#include "carla/rpc/Response.h"
+#include "carla/rpc/Server.h"
+#include "carla/rpc/WeatherParameters.h"
+#include "carla/Logging.h"
+#include "carla/RecurrentSharedFuture.h"
+#include "carla/rpc/WalkerControl.h"
+
+#include <exception>
+#include <vector>
+
+namespace carla {
+namespace client {
+namespace detail {
+
+  // Implementation mostly copied from original but with all navigation 
+  // functionality stubbed out for ARM64 compatibility
+
+  Simulator::Simulator(
+      const std::string &host,
+      uint16_t port,
+      size_t worker_threads,
+      bool enable_garbage_collection)
+    : _client(host, port, worker_threads),
+      _light_manager(MakeEpisodeProxy(host, port, worker_threads)),
+      LIBCARLA_INITIALIZE_LIFETIME_PROFILER(),
+      _gc_policy(enable_garbage_collection ?
+          GarbageCollectionPolicy::Enabled :
+          GarbageCollectionPolicy::Disabled) {}
+
+  Simulator::~Simulator() = default;
+
+  EpisodeProxy Simulator::MakeEpisodeProxy(
+      const std::string &host,
+      uint16_t port,
+      size_t worker_threads) {
+    return _client.Subscribe(host, port, worker_threads);
+  }
+
+  std::string Simulator::GetClientVersion() {
+    return _client.version();
+  }
+
+  std::string Simulator::GetServerVersion() {
+    return _client.GetServerVersion(_episode->GetToken());
+  }
+
+  void Simulator::SetEpisodeSettings(const rpc::EpisodeSettings &settings) {
+    _client.SetEpisodeSettings(_episode->GetToken(), settings);
+  }
+
+  rpc::EpisodeSettings Simulator::GetEpisodeSettings() {
+    return _client.GetEpisodeSettings(_episode->GetToken());
+  }
+
+  rpc::MapInfo Simulator::GetMapInfo() {
+    return _client.GetMapInfo(_episode->GetToken());
+  }
+
+  std::shared_ptr<Map> Simulator::GetCurrentMap() {
+    const auto info = GetMapInfo();
+    if (_cached_map == nullptr || (_cached_map->GetName() != info.name)) {
+      log_info("loading new map '", info.name, "' with ", info.size, " bytes");
+      auto str = GetMapData();
+      _cached_map = std::make_shared<Map>(info, std::move(str));
+    }
+    return _cached_map;
+  }
+
+  SharedPtr<Actor> Simulator::GetSpectator() {
+    return ActorFactory::MakeActor(GetWorld(), _client.GetSpectator(_episode->GetToken()), _gc_policy);
+  }
+
+  rpc::EpisodeInfo Simulator::GetEpisodeInfo() {
+    return _client.GetEpisodeInfo(_episode->GetToken());
+  }
+
+  rpc::WeatherParameters Simulator::GetWeatherParameters() {
+    return _client.GetWeatherParameters(_episode->GetToken());
+  }
+
+  void Simulator::SetWeatherParameters(const rpc::WeatherParameters &weather) {
+    _client.SetWeatherParameters(_episode->GetToken(), weather);
+  }
+
+  WorldSnapshot Simulator::GetWorldSnapshot() {
+    return WorldSnapshot{_client.GetWorldSnapshot(_episode->GetToken())};
+  }
+
+  void Simulator::SetTimeout(time_duration timeout) {
+    _client.SetTimeout(timeout);
+  }
+
+  std::string Simulator::GetMapData() {
+    return _client.GetMapData(_episode->GetToken());
+  }
+
+  std::vector<std::string> Simulator::GetAvailableMaps() {
+    return _client.GetAvailableMaps(_episode->GetToken());
+  }
+
+  void Simulator::LoadWorld(std::string map_name) {
+    _cached_map.reset();
+    _episode = _client.LoadEpisode(_episode->GetToken(), std::move(map_name));
+    _light_manager.SetEpisode(WeakEpisodeProxy{_episode});
+  }
+
+  SharedPtr<BlueprintLibrary> Simulator::GetBlueprintLibrary() {
+    return std::make_shared<BlueprintLibrary>(_client.GetActorDefinitions(_episode->GetToken()));
+  }
+
+  SharedPtr<Actor> Simulator::SpawnActor(
+      const ActorBlueprint &blueprint,
+      const geom::Transform &transform,
+      Actor *parent,
+      rpc::AttachmentType attachment_type) {
+    rpc::Actor actor = (parent != nullptr ?
+        _client.SpawnActorWithParent(_episode->GetToken(), blueprint.MakeActorDescription(), transform, parent->GetId(), attachment_type) :
+        _client.SpawnActor(_episode->GetToken(), blueprint.MakeActorDescription(), transform));
+    DEBUG_ASSERT(actor.id != 0u);
+    return ActorFactory::MakeActor(GetWorld(), std::move(actor), _gc_policy);
+  }
+
+  bool Simulator::DestroyActor(Actor &actor) {
+    bool result = false;
+    result = _client.DestroyActor(_episode->GetToken(), actor.GetId());
+    if (result) {
+      _episode->GetState().RemoveActor(actor.GetId());
+    }
+    return result;
+  }
+
+  SharedPtr<Actor> Simulator::GetActorById(ActorId id) {
+    auto description = GetActorsById({id});
+    return description.empty() ? nullptr : description[0u];
+  }
+
+  std::vector<SharedPtr<Actor>> Simulator::GetActorsById(const std::vector<ActorId> &actor_ids) {
+    std::vector<SharedPtr<Actor>> result;
+    result.reserve(actor_ids.size());
+    auto actor_list = _client.GetActorsById(_episode->GetToken(), actor_ids);
+    for (auto &&description : actor_list) {
+      result.emplace_back(ActorFactory::MakeActor(GetWorld(), std::move(description), _gc_policy));
+    }
+    return result;
+  }
+
+  std::vector<SharedPtr<Actor>> Simulator::GetAllTheActorsInTheEpisode() {
+    std::vector<SharedPtr<Actor>> result;
+    auto actor_list = _client.GetAllTheActorsInTheEpisode(_episode->GetToken());
+    for (auto &&description : actor_list) {
+      result.emplace_back(ActorFactory::MakeActor(GetWorld(), std::move(description), _gc_policy));
+    }
+    return result;
+  }
+
+  void Simulator::SetActorLocation(Actor &actor, const geom::Location &location) {
+    _client.SetActorLocation(_episode->GetToken(), actor.GetId(), location);
+  }
+
+  void Simulator::SetActorTransform(Actor &actor, const geom::Transform &transform) {
+    _client.SetActorTransform(_episode->GetToken(), actor.GetId(), transform);
+  }
+
+  void Simulator::SetActorTargetVelocity(Actor &actor, const geom::Vector3D &vector) {
+    _client.SetActorTargetVelocity(_episode->GetToken(), actor.GetId(), vector);
+  }
+
+  void Simulator::SetActorTargetAngularVelocity(Actor &actor, const geom::Vector3D &vector) {
+    _client.SetActorTargetAngularVelocity(_episode->GetToken(), actor.GetId(), vector);
+  }
+
+  void Simulator::EnableActorConstantVelocity(Actor &actor, const geom::Vector3D &vector) {
+    _client.EnableActorConstantVelocity(_episode->GetToken(), actor.GetId(), vector);
+  }
+
+  void Simulator::DisableActorConstantVelocity(Actor &actor) {
+    _client.DisableActorConstantVelocity(_episode->GetToken(), actor.GetId());
+  }
+
+  void Simulator::AddActorImpulse(Actor &actor, const geom::Vector3D &vector) {
+    _client.AddActorImpulse(_episode->GetToken(), actor.GetId(), vector);
+  }
+
+  void Simulator::AddActorImpulse(Actor &actor, const geom::Vector3D &vector, const geom::Vector3D &point) {
+    _client.AddActorImpulse(_episode->GetToken(), actor.GetId(), vector, point);
+  }
+
+  void Simulator::AddActorForce(Actor &actor, const geom::Vector3D &vector) {
+    _client.AddActorForce(_episode->GetToken(), actor.GetId(), vector);
+  }
+
+  void Simulator::AddActorForce(Actor &actor, const geom::Vector3D &vector, const geom::Vector3D &point) {
+    _client.AddActorForce(_episode->GetToken(), actor.GetId(), vector, point);
+  }
+
+  void Simulator::AddActorAngularImpulse(Actor &actor, const geom::Vector3D &vector) {
+    _client.AddActorAngularImpulse(_episode->GetToken(), actor.GetId(), vector);
+  }
+
+  void Simulator::AddActorTorque(Actor &actor, const geom::Vector3D &vector) {
+    _client.AddActorTorque(_episode->GetToken(), actor.GetId(), vector);
+  }
+
+  void Simulator::SetActorSimulatePhysics(Actor &actor, bool enabled) {
+    _client.SetActorSimulatePhysics(_episode->GetToken(), actor.GetId(), enabled);
+  }
+
+  void Simulator::SetActorCollisions(Actor &actor, bool enabled) {
+    _client.SetActorCollisions(_episode->GetToken(), actor.GetId(), enabled);
+  }
+
+  void Simulator::SetActorDead(Actor &actor) {
+    _client.SetActorDead(_episode->GetToken(), actor.GetId());
+  }
+
+  void Simulator::SetActorEnableGravity(Actor &actor, bool enabled) {
+    _client.SetActorEnableGravity(_episode->GetToken(), actor.GetId(), enabled);
+  }
+
+  rpc::ActorState Simulator::GetActorState(const Actor &actor) {
+    return _client.GetActorState(_episode->GetToken(), actor.GetId());
+  }
+
+  geom::Location Simulator::GetActorLocation(const Actor &actor) {
+    return _client.GetActorLocation(_episode->GetToken(), actor.GetId());
+  }
+
+  geom::Transform Simulator::GetActorTransform(const Actor &actor) {
+    return _client.GetActorTransform(_episode->GetToken(), actor.GetId());
+  }
+
+  geom::Vector3D Simulator::GetActorVelocity(const Actor &actor) {
+    return _client.GetActorVelocity(_episode->GetToken(), actor.GetId());
+  }
+
+  geom::Vector3D Simulator::GetActorAngularVelocity(const Actor &actor) {
+    return _client.GetActorAngularVelocity(_episode->GetToken(), actor.GetId());
+  }
+
+  geom::Vector3D Simulator::GetActorAcceleration(const Actor &actor) {
+    return _client.GetActorAcceleration(_episode->GetToken(), actor.GetId());
+  }
+
+  void Simulator::SetActorAutopilot(Actor &vehicle, bool enabled) {
+    _client.SetActorAutopilot(_episode->GetToken(), vehicle.GetId(), enabled);
+  }
+
+  void Simulator::ShowDebugTelemetry(Actor &actor, bool enabled) {
+    _client.ShowDebugTelemetry(_episode->GetToken(), actor.GetId(), enabled);
+  }
+
+  void Simulator::ApplyControlToActor(Actor &actor, const rpc::Command &command) {
+    _client.ApplyControlToActor(_episode->GetToken(), actor.GetId(), command);
+  }
+
+  void Simulator::ApplyControlToWalker(Actor &walker, const rpc::WalkerControl &control) {
+    _client.ApplyControlToWalker(_episode->GetToken(), walker.GetId(), control);
+  }
+
+  rpc::WalkerBoneControl Simulator::GetBonesTransform(Actor &walker) {
+    return _client.GetBonesTransform(_episode->GetToken(), walker.GetId());
+  }
+
+  void Simulator::SetBonesTransform(Actor &walker, const rpc::WalkerBoneControl &bones) {
+    return _client.SetBonesTransform(_episode->GetToken(), walker.GetId(), bones);
+  }
+
+  void Simulator::BlendPose(Actor &walker, float blend) {
+    return _client.BlendPose(_episode->GetToken(), walker.GetId(), blend);
+  }
+
+  void Simulator::GetPoseFromAnimation(Actor &walker) {
+    return _client.GetPoseFromAnimation(_episode->GetToken(), walker.GetId());
+  }
+
+  std::vector<geom::Location> Simulator::GetActorWaypoints(const Actor &actor) const {
+    return _client.GetActorWaypoints(_episode->GetToken(), actor.GetId());
+  }
+
+  void Simulator::SetActorLightState(Actor &actor, const rpc::VehicleLightState &light_state) {
+    _client.SetActorLightState(_episode->GetToken(), actor.GetId(), light_state);
+  }
+
+  rpc::VehicleLightState Simulator::GetActorLightState(const Actor &actor) const {
+    return _client.GetActorLightState(_episode->GetToken(), actor.GetId());
+  }
+
+  void Simulator::OpenVehicleDoor(Actor &actor, const rpc::VehicleDoor door_idx) {
+    return _client.OpenVehicleDoor(_episode->GetToken(), actor.GetId(), door_idx);
+  }
+
+  void Simulator::CloseVehicleDoor(Actor &actor, const rpc::VehicleDoor door_idx) {
+    return _client.CloseVehicleDoor(_episode->GetToken(), actor.GetId(), door_idx);
+  }
+
+  // Navigation methods - all stubbed out for ARM64 build
+  void Simulator::NavigationTick() {
+    // Navigation functionality disabled for ARM64 build
+  }
+
+  void Simulator::RegisterAIController(const WalkerAIController &controller) {
+    // Navigation functionality disabled for ARM64 build
+    (void)controller; // Suppress unused parameter warning
+  }
+
+  void Simulator::UnregisterAIController(const WalkerAIController &controller) {
+    // Navigation functionality disabled for ARM64 build
+    (void)controller; // Suppress unused parameter warning
+  }
+
+  boost::optional<geom::Location> Simulator::GetRandomLocationFromNavigation() {
+    // Navigation functionality disabled for ARM64 build
+    return {};
+  }
+
+  void Simulator::SetPedestriansCrossFactor(float percentage) {
+    // Navigation functionality disabled for ARM64 build
+    (void)percentage; // Suppress unused parameter warning
+  }
+
+  void Simulator::SetPedestriansSeed(unsigned int seed) {
+    // Navigation functionality disabled for ARM64 build
+    (void)seed; // Suppress unused parameter warning
+  }
+
+  void Simulator::FreezeAllTrafficLights(bool frozen) {
+    _client.FreezeAllTrafficLights(_episode->GetToken(), frozen);
+  }
+
+  /// Returns a list of pairs where the first element is the vehicle ID
+  /// and the second one is the light state
+  std::vector<std::pair<rpc::ActorId, rpc::VehicleLightState>> Simulator::GetVehiclesLightStates() {
+    return _client.GetVehiclesLightStates(_episode->GetToken());
+  }
+
+  SharedPtr<LightManager> Simulator::GetLightManager() {
+    return std::static_pointer_cast<LightManager>(_light_manager.get());
+  }
+
+  void Simulator::ResetAllTrafficLights() {
+    _client.ResetAllTrafficLights(_episode->GetToken());
+  }
+
+  void Simulator::ReplayFile(const std::string &name, double time_start, double duration,
+      uint32_t follow_id, bool replay_sensors) {
+    _client.ReplayFile(_episode->GetToken(), name, time_start, duration, follow_id, replay_sensors);
+  }
+
+  std::string Simulator::StartRecorder(const std::string &name, bool additional_data) {
+    return _client.StartRecorder(_episode->GetToken(), name, additional_data);
+  }
+
+  void Simulator::StopRecorder() {
+    _client.StopRecorder(_episode->GetToken());
+  }
+
+  std::string Simulator::ShowRecorderFileInfo(const std::string &name, bool show_all) {
+    return _client.ShowRecorderFileInfo(_episode->GetToken(), name, show_all);
+  }
+
+  std::string Simulator::ShowRecorderCollisions(const std::string &name, char type1, char type2) {
+    return _client.ShowRecorderCollisions(_episode->GetToken(), name, type1, type2);
+  }
+
+  std::string Simulator::ShowRecorderActorsBlocked(const std::string &name, double min_time, double min_distance) {
+    return _client.ShowRecorderActorsBlocked(_episode->GetToken(), name, min_time, min_distance);
+  }
+
+  void Simulator::SetReplayerTimeFactor(double time_factor) {
+    _client.SetReplayerTimeFactor(_episode->GetToken(), time_factor);
+  }
+
+  void Simulator::SetReplayerIgnoreHero(bool ignore_hero) {
+    _client.SetReplayerIgnoreHero(_episode->GetToken(), ignore_hero);
+  }
+
+  void Simulator::SetReplayerIgnoreSpectator(bool ignore_spectator) {
+    _client.SetReplayerIgnoreSpectator(_episode->GetToken(), ignore_spectator);
+  }
+
+  std::vector<rpc::Command> Simulator::ApplyBatchSync(const std::vector<rpc::Command> &commands, bool do_tick_cue) {
+    auto result = _client.ApplyBatchSync(_episode->GetToken(), commands, do_tick_cue);
+    return result;
+  }
+
+  void Simulator::ApplyBatch(const std::vector<rpc::Command> &commands, bool do_tick_cue) {
+    _client.ApplyBatch(_episode->GetToken(), commands, do_tick_cue);
+  }
+
+  WorldSnapshot Simulator::WaitForTick(time_duration timeout) {
+    return WorldSnapshot{_client.WaitForTick(_episode->GetToken(), timeout)};
+  }
+
+  size_t Simulator::RegisterOnTickEvent(std::function<void(WorldSnapshot)> callback) {
+    return _client.SubscribeToStream(
+        _episode->GetToken(),
+        carla::streaming::Stream::token_type(streaming::detail::token_data(GetEpisodeInfo().id, 0u)),
+        [callback](auto buffer) {
+          callback(WorldSnapshot::Load(std::move(buffer)));
+        });
+  }
+
+  void Simulator::RemoveOnTickEvent(size_t id) {
+    _client.UnSubscribeFromStream(_episode->GetToken(), id);
+  }
+
+  void Simulator::Tick(time_duration timeout) {
+    _client.SendTickCue(_episode->GetToken());
+    _client.WaitForTick(_episode->GetToken(), timeout);
+  }
+
+  void Simulator::SetSynchronousMode(bool synchronous) {
+    rpc::EpisodeSettings settings;
+    settings.synchronous_mode = synchronous;
+    SetEpisodeSettings(settings);
+  }
+
+  bool Simulator::GetSynchronousMode() {
+    return GetEpisodeSettings().synchronous_mode;
+  }
+
+  void Simulator::SetFixedDeltaSeconds(double delta_seconds) {
+    rpc::EpisodeSettings settings = GetEpisodeSettings();
+    settings.fixed_delta_seconds = delta_seconds;
+    SetEpisodeSettings(settings);
+  }
+
+  double Simulator::GetFixedDeltaSeconds() {
+    return GetEpisodeSettings().fixed_delta_seconds.get();
+  }
+
+  void Simulator::SetMaxSubstepDeltaTime(double max_substep_delta_time) {
+    rpc::EpisodeSettings settings = GetEpisodeSettings();
+    settings.max_substep_delta_time = max_substep_delta_time;
+    SetEpisodeSettings(settings);
+  }
+
+  double Simulator::GetMaxSubstepDeltaTime() {
+    return GetEpisodeSettings().max_substep_delta_time;
+  }
+
+  void Simulator::SetMaxSubsteps(int max_substeps) {
+    rpc::EpisodeSettings settings = GetEpisodeSettings();
+    settings.max_substeps = max_substeps;
+    SetEpisodeSettings(settings);
+  }
+
+  int Simulator::GetMaxSubsteps() {
+    return GetEpisodeSettings().max_substeps;
+  }
+
+  uint64_t Simulator::Tick() {
+    const auto frame = _client.SendTickCue(_episode->GetToken());
+    NavigationTick();
+    return frame;
+  }
+
+  void Simulator::DrawDebugShape(const rpc::DebugShape &shape) {
+    _client.DrawDebugShape(_episode->GetToken(), shape);
+  }
+
+  void Simulator::MakeVehiclesPhysicsEnabled(const std::vector<ActorId> &vehicle_ids, bool enabled) {
+    _client.EnableCarSim(_episode->GetToken(), vehicle_ids, enabled);
+  }
+
+  std::pair<bool, rpc::LabelledPoint> Simulator::ProjectPoint(
+      geom::Location location, geom::Vector3D direction, float search_distance) const {
+    return _client.ProjectPoint(_episode->GetToken(), location, direction, search_distance);
+  }
+
+  std::vector<rpc::LabelledPoint> Simulator::CastRay(
+      geom::Location start_location, geom::Location end_location) const {
+    return _client.CastRay(_episode->GetToken(), start_location, end_location);
+  }
+
+} // namespace detail
+} // namespace client
+} // namespace carla

@@ -150,6 +150,7 @@ file(GLOB libcarla_carla_image_sources
 set(libcarla_sources "${libcarla_sources};${libcarla_carla_image_sources}")
 install(FILES ${libcarla_carla_image_sources} DESTINATION include/carla/image)
 
+# Navigation sources - minimal stubs only
 file(GLOB libcarla_carla_nav_sources
     "${libcarla_source_path}/carla/nav/*.cpp"
     "${libcarla_source_path}/carla/nav/*.h")
@@ -300,6 +301,20 @@ install(FILES ${libcarla_carla_trafficmanager_sources} DESTINATION include/carla
 
 if (LIBCARLA_BUILD_RELEASE)
   add_library(carla_client${carla_target_postfix} STATIC ${libcarla_sources})
+
+  # Enable PIC for Python bindings
+  set_target_properties(carla_client${carla_target_postfix} PROPERTIES
+      POSITION_INDEPENDENT_CODE ON)
+
+  target_include_directories(carla_client${carla_target_postfix} PRIVATE
+      "${libcarla_source_path}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../../source/third-party")
+  
+  target_include_directories(carla_client${carla_target_postfix} SYSTEM PRIVATE
+      "${BOOST_INCLUDE_PATH}"
+      "${RPCLIB_INCLUDE_PATH}"
+      "${RECAST_INCLUDE_PATH}"
+      "${LIBPNG_INCLUDE_PATH}")
 
   if (BUILD_RSS_VARIANT)
     target_compile_definitions(carla_client${carla_target_postfix} PRIVATE RSS_ENABLED RSS_USE_TBB)

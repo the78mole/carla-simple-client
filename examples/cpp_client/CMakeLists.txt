@@ -1,42 +1,48 @@
 cmake_minimum_required(VERSION 3.14)
 project(carla_cpp_client VERSION 0.1.0 LANGUAGES CXX)
 
-# Find LibCarla installation
-set(CARLA_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../deps/install/libcarla-client")
-set(CARLA_INCLUDE_DIR "${CARLA_INSTALL_DIR}/include")
-set(CARLA_LIB_DIR "${CARLA_INSTALL_DIR}/lib")
+# Allow overriding paths from command line
+if(NOT DEFINED CARLA_INCLUDE_DIR)
+    set(CARLA_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../build/x86_64/libcarla/install/include")
+endif()
+if(NOT DEFINED CARLA_LIBRARY)
+    set(CARLA_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/../../build/x86_64/libcarla/install/lib/libcarla_client.a")
+endif()
+if(NOT DEFINED RPCLIB_INCLUDE_DIR)
+    set(RPCLIB_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../deps/x86_64/include")
+endif()
+if(NOT DEFINED RPCLIB_LIBRARY)
+    set(RPCLIB_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/../../deps/x86_64/lib/librpc.a")
+endif()
 
-# Set PNG library paths before find_package
-set(PNG_PNG_INCLUDE_DIR "${CARLA_INCLUDE_DIR}/system")
-set(PNG_LIBRARY "${CARLA_LIB_DIR}/libpng.a")
-
-find_package(PNG REQUIRED)
+# Find system libraries
+find_package(Boost REQUIRED COMPONENTS system filesystem)
 find_package(Threads REQUIRED)
 
-add_executable(carla_cpp_client main.cpp)
+add_executable(cpp_client main.cpp)
 
-target_include_directories(carla_cpp_client PRIVATE
+target_include_directories(cpp_client PRIVATE
     ${CARLA_INCLUDE_DIR}
-    ${CARLA_INCLUDE_DIR}/system
+    ${RPCLIB_INCLUDE_DIR}
+    ${Boost_INCLUDE_DIRS}
 )
 
-target_link_libraries(carla_cpp_client PRIVATE
-    ${CARLA_LIB_DIR}/libcarla_client.a
-    ${CARLA_LIB_DIR}/librpc.a
-    ${CARLA_LIB_DIR}/libboost_filesystem.a
-    ${CARLA_LIB_DIR}/libRecast.a
-    ${CARLA_LIB_DIR}/libDetour.a
-    ${CARLA_LIB_DIR}/libDetourCrowd.a
-    PNG::PNG
+target_link_libraries(cpp_client PRIVATE
+    ${CARLA_LIBRARY}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../build/x86_64/third-party/libcarla_third_party.a
+    ${RPCLIB_LIBRARY}
+    Boost::system
+    Boost::filesystem
     Threads::Threads
 )
 
-target_compile_features(carla_cpp_client PRIVATE cxx_std_14)
-target_compile_definitions(carla_cpp_client PRIVATE
+target_compile_features(cpp_client PRIVATE cxx_std_14)
+target_compile_options(cpp_client PRIVATE -pthread -fPIC)
+target_compile_definitions(cpp_client PRIVATE
     BOOST_ERROR_CODE_HEADER_ONLY
 )
 
 # Install the example
-install(TARGETS carla_cpp_client
+install(TARGETS cpp_client
     RUNTIME DESTINATION bin
 )

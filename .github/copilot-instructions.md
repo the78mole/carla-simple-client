@@ -30,20 +30,37 @@ It also contains some examples of Python and C++ clients.
 ```
 carla-simple-client/
 ├── .github/
-│   └── copilot-instructions.md  # This file
+│   ├── copilot-instructions.md  # This file
+│   └── workflows/               # GitHub Actions CI/CD workflows
+├── build-containers/
+│   └── x86_64-cross-arm64-ubuntu-22.04/  # ARM64 cross-compilation container
+│       ├── Dockerfile
+│       ├── build-arm64-deps.sh  # Automated dependency building script
+│       └── arm64-toolchain.cmake # ARM64 cross-compilation toolchain
 ├── LibCarla/                    # CARLA client library sources (included)
 │   ├── cmake/                   # CMake build configuration
 │   └── source/                  # C++ source code
+├── PythonAPI/                   # Python API bindings
+│   └── source/                  # CARLA Python package sources
 ├── cmake/
 │   ├── toolchain-arm64.cmake    # ARM64 cross-compilation toolchain
 │   └── toolchain-x86_64.cmake   # x86_64 native toolchain
+├── deps/                        # Architecture-specific dependencies
+│   ├── x86_64/                  # Native x86_64 dependencies
+│   └── aarch64/                 # ARM64 cross-compiled dependencies
+├── build/                       # Architecture-specific build outputs
+│   ├── x86_64/                  # Native x86_64 builds
+│   └── aarch64/                 # ARM64 cross-compiled builds
 ├── scripts/
 │   └── setup-dependencies.sh    # Script to build dependencies
 ├── examples/
 │   ├── cpp_client/              # Example C++ client
 │   │   ├── CMakeLists.txt
 │   │   └── main.cpp
-│   └── python_client/           # Example Python client (planned)
+│   ├── cpp_client_window/       # C++ client with OpenCV window rendering
+│   ├── python_client/           # Example Python client
+│   └── python_client_window/    # Python client with pygame window rendering
+├── tests/                       # Test suite
 ├── CMakeLists.txt               # Main CMake configuration
 ├── pyproject.toml               # Python project configuration (PEP 517/518)
 ├── README.md                    # Project documentation

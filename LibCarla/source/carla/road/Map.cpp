@@ -32,6 +32,7 @@
 #include <queue>
 #include <set>
 #include <cmath>
+#include <mutex>
 
 namespace carla {
 namespace road {

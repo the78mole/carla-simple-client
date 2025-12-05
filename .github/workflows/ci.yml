@@ -93,39 +93,41 @@ jobs:
         run: |
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup dependencies
-        run: ./scripts/setup-dependencies.sh
-
-      - name: Build (native)
-        if: matrix.arch == 'x86_64'
-        run: |
-          mkdir -p build
-          cd build
-          cmake -G Ninja \
-            -DPNG_PNG_INCLUDE_DIR="${PWD}/../deps/install/libcarla-client/include/system" \
-            -DPNG_LIBRARY="${PWD}/../deps/install/libcarla-client/lib/libpng.a" \
-            ..
-          ninja
-
-      - name: Build (cross-compile ARM64)
+      - name: Install Docker (ARM64)
         if: matrix.arch == 'aarch64'
         run: |
-          mkdir -p build-arm64
-          cd build-arm64
-          cmake -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchain-arm64.cmake \
-            -DPNG_PNG_INCLUDE_DIR="${PWD}/../deps/install/libcarla-client/include/system" \
-            -DPNG_LIBRARY="${PWD}/../deps/install/libcarla-client/lib/libpng.a" \
-            ..
-          ninja
+          # Docker is needed for ARM64 cross-compilation
+          sudo apt-get install -y docker.io
+          sudo systemctl start docker || true
+          sudo usermod -aG docker $USER || true
+
+      - name: Build C++ client (x86_64)
+        if: matrix.arch == 'x86_64'
+        run: |
+          echo "PWD: $(pwd)"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "Makefile exists: $(ls -la Makefile 2>/dev/null || echo 'NOT FOUND')"
+          echo "Files in current dir: $(ls -la | head -20)"
+          cd $GITHUB_WORKSPACE || cd /home/daniel/GIT/carla-simple-client
+          echo "After cd PWD: $(pwd)"
+          echo "Makefile after cd: $(ls -la Makefile 2>/dev/null || echo 'NOT FOUND')"
+          make build-x86_64
+
+      - name: Build C++ client (ARM64)
+        if: matrix.arch == 'aarch64'
+        run: |
+          cd $GITHUB_WORKSPACE
+          # Build Docker image first for ARM64 cross-compilation
+          docker build -t carla-arm64-builder:latest build-containers/x86_64-cross-arm64-ubuntu-22.04/
+          make build-arm64
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v5
         with:
           name: cpp-client-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            build*/examples/cpp_client/carla_cpp_client
-            deps/install/libcarla-client/
+            examples/cpp_client/cpp_client
+            build/aarch64/cpp_client/cpp_client
 
   build-wheels:
     name: Build wheels on ${{ matrix.os }}
