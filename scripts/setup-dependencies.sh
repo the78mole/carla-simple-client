@@ -224,7 +224,14 @@ build_recast() {
     # Copy to LibCarla install dir
     mkdir -p "${LIBCARLA_INSTALL_DIR}/include/system"
     cp -rf "${RECAST_INSTALL_DIR}/include/recast" "${LIBCARLA_INSTALL_DIR}/include/system/"
-    cp -f "${RECAST_INSTALL_DIR}/lib/"*.a "${LIBCARLA_INSTALL_DIR}/lib/"
+    # Try lib/ first, then lib64/ (some systems install to lib64/)
+    if [[ -d "${RECAST_INSTALL_DIR}/lib" ]] && ls "${RECAST_INSTALL_DIR}/lib/"*.a 1> /dev/null 2>&1; then
+        cp -f "${RECAST_INSTALL_DIR}/lib/"*.a "${LIBCARLA_INSTALL_DIR}/lib/"
+    elif [[ -d "${RECAST_INSTALL_DIR}/lib64" ]] && ls "${RECAST_INSTALL_DIR}/lib64/"*.a 1> /dev/null 2>&1; then
+        cp -f "${RECAST_INSTALL_DIR}/lib64/"*.a "${LIBCARLA_INSTALL_DIR}/lib/"
+    else
+        error "No Recast static libraries found in ${RECAST_INSTALL_DIR}/lib or ${RECAST_INSTALL_DIR}/lib64"
+    fi
     
     log "Recast installed."
 }
