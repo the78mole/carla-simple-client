@@ -173,7 +173,7 @@ jobs:
         if: ${{ runner.os == 'Linux' && !env.ACT && matrix.os != 'macos-15' }}
         uses: docker/setup-qemu-action@v3
         with:
-          platforms: arm64
+          platforms: all
 
       - name: Build dependencies (for real CI)
         if: ${{ !env.ACT }}
@@ -188,16 +188,22 @@ jobs:
           mkdir -p wheelhouse
           echo "act test passed" > wheelhouse/.keep
 
-      - name: Build wheels (CI - all architectures)
-        if: ${{ !env.ACT && matrix.os != 'macos-15' }}
+      - name: Build wheels (CI - Linux)
+        if: ${{ !env.ACT && runner.os == 'Linux' }}
         uses: pypa/cibuildwheel@v2.21.3
         env:
           CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
-          CIBW_SKIP: "*-win32 *-manylinux_i686 *-musllinux_*"
-          CIBW_ARCHS_LINUX: x86_64 aarch64
-          CIBW_ARCHS_MACOS: x86_64 arm64
-          CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_35_x86_64:latest
-          CIBW_MANYLINUX_AARCH64_IMAGE: quay.io/pypa/manylinux_2_35_aarch64:latest
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_ARCHS: "x86_64 aarch64"
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
+      
+      - name: Build wheels (CI - macOS)
+        if: ${{ !env.ACT && runner.os == 'macOS' }}
+        uses: pypa/cibuildwheel@v2.21.3
+        env:
+          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
+          CIBW_ARCHS: "x86_64 arm64"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
 
