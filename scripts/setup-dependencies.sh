@@ -202,6 +202,10 @@ build_recast() {
     if [[ ! -d "recast-source" ]]; then
         git clone --depth 1 -b carla \
             https://github.com/carla-simulator/recastnavigation.git recast-source
+        
+        # Fix CMake minimum version requirement (CARLA fork uses old version)
+        sed -i.bak 's/cmake_minimum_required(VERSION [0-9.]*)/cmake_minimum_required(VERSION 3.5)/' \
+            recast-source/CMakeLists.txt
     fi
     
     mkdir -p recast-build
