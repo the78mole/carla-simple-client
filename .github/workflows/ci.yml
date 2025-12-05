@@ -79,7 +79,7 @@ jobs:
       - name: Build C++ client (x86_64)
         if: matrix.arch == 'x86_64'
         run: |
-          docker run --rm -v "$PWD:/workspace" -w /workspace \
+          docker run --rm --user root -v "$PWD:/workspace" -w /workspace \
             carla-x86_64-native:ubuntu-22.04 \
             bash /workspace/build-containers/x86_64-native-ubuntu-22.04/build-native-examples.sh
 
@@ -87,7 +87,7 @@ jobs:
         if: matrix.arch == 'arm64'
         run: |
           # Run all build steps in the Docker container
-          docker run --rm -v "$PWD:/workspace" -w /workspace \
+          docker run --rm --user root -v "$PWD:/workspace" -w /workspace \
             carla-arm64-builder:latest \
             bash -c '
               # Build dependencies
@@ -182,11 +182,11 @@ jobs:
         if: ${{ runner.os == 'Linux' && !env.ACT }}
         run: |
           # Build dependencies and LibCarla first
-          docker run --rm -v "$PWD:/workspace" -w /workspace \
+          docker run --rm --user root -v "$PWD:/workspace" -w /workspace \
             carla-x86_64-native:ubuntu-22.04 \
             bash /workspace/build-containers/x86_64-native-ubuntu-22.04/build-native-examples.sh
           # Now build the Python wheel
-          docker run --rm -v "$PWD:/workspace" -w /workspace \
+          docker run --rm --user root -v "$PWD:/workspace" -w /workspace \
             carla-x86_64-native:ubuntu-22.04 \
             bash -c 'python3 -m pip install --upgrade pip build wheel && python3 -m build --wheel'
 
