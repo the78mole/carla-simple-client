@@ -1,0 +1,19 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - copilot/**
+  push:
+    branches:
+      - ci/**
+
+jobs:
+  build:
+    name: Build and Test
+    uses: ./.github/workflows/build.yml
+    with:
+      version: '0.9.16-dev'
+      upload-artifacts: false

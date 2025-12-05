@@ -1,12 +1,21 @@
-name: CI
+name: Build
 
 on:
-  push:
-  pull_request:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 0.9.16 or 0.9.16-dev.1)'
+        required: false
+        type: string
+        default: '0.9.16-dev'
+      upload-artifacts:
+        description: 'Whether to upload build artifacts'
+        required: false
+        type: boolean
+        default: true
 
-# Limit permissions for security
-permissions:
-  contents: read
+env:
+  ACT: ${{ github.event_name == 'act' }}
 
 jobs:
   lint-python:
@@ -15,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04, macos-15]
+        os: [ubuntu-22.04, ubuntu-24.04]
         python-version: ['3.11']
 
     steps:
@@ -37,8 +46,8 @@ jobs:
 
       - name: Run linting
         run: |
-          uv run ruff check .
-          uv run black --check .
+          uv run --no-project ruff check .
+          uv run --no-project black --check .
 
   build-cpp:
     name: Build C++ on ${{ matrix.os }}
@@ -139,6 +148,7 @@ jobs:
             '
 
       - name: Upload build artifacts
+        if: inputs.upload-artifacts
         uses: actions/upload-artifact@v5
         with:
           name: cpp-client-${{ matrix.os }}-${{ matrix.arch }}
@@ -197,11 +207,6 @@ jobs:
           mkdir -p wheelhouse
           echo "act test passed" > wheelhouse/.keep
       
-      # macOS dependency build temporarily disabled - Python header detection issues
-      # - name: Build dependencies (macOS)
-      #   if: ${{ !env.ACT && runner.os == 'macOS' }}
-      #   run: ./scripts/setup-dependencies.sh
-
       - name: Build wheels (macOS)
         if: ${{ !env.ACT && runner.os == 'macOS' }}
         uses: pypa/cibuildwheel@v2.21.3
@@ -215,14 +220,14 @@ jobs:
           CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
 
       - name: Upload wheels (Linux)
-        if: ${{ !env.ACT && runner.os == 'Linux' }}
+        if: ${{ inputs.upload-artifacts && !env.ACT && runner.os == 'Linux' }}
         uses: actions/upload-artifact@v5
         with:
           name: wheels-${{ matrix.os }}
           path: dist/*.whl
 
       - name: Upload wheels (macOS)
-        if: ${{ !env.ACT && runner.os == 'macOS' }}
+        if: ${{ inputs.upload-artifacts && !env.ACT && runner.os == 'macOS' }}
         uses: actions/upload-artifact@v5
         with:
           name: wheels-${{ matrix.os }}

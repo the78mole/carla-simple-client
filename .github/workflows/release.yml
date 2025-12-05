@@ -2,297 +2,114 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 0.9.16.1)'
+        description: 'Version to release (e.g., 0.9.16 or leave empty for auto)'
         required: false
+        type: string
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-  # Generate semantic version
-  version:
-    name: Generate Version
+  calculate-version:
+    name: Calculate Version
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      version_tag: ${{ steps.version.outputs.version_tag }}
+      version: ${{ steps.semver.outputs.version }}
+      tag: ${{ steps.semver.outputs.tag }}
+    
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Generate version
-        id: version
-        uses: paulhatch/semantic-version@v5.4.0
-        with:
-          tag_prefix: "v"
-          major_pattern: "/(feat|fix|refactor)!:/"
-          minor_pattern: "/^feat:/"
-          version_format: "${major}.${minor}.${patch}"
-          bump_each_commit: true
-          search_commit_body: true
-
-  # Build C++ clients
-  build-cpp:
-    name: Build C++ (${{ matrix.os }}-${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
-    needs: version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            arch: x86_64
-          - os: ubuntu-22.04
-            arch: aarch64
-          - os: ubuntu-24.04
-            arch: x86_64
-          - os: ubuntu-24.04
-            arch: aarch64
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install dependencies
+      - name: Determine version
+        id: semver
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake ninja-build git wget \
-            libpng-dev libtiff-dev libjpeg-dev \
-            python3-dev python3-pip \
-            autoconf automake libtool
-
-      - name: Install cross-compiler (ARM64)
-        if: matrix.arch == 'aarch64'
-        run: |
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-      - name: Install Docker (ARM64)
-        if: matrix.arch == 'aarch64'
-        run: |
-          # Docker is needed for ARM64 cross-compilation
-          sudo apt-get install -y docker.io
-          sudo systemctl start docker || true
-          sudo usermod -aG docker $USER || true
-
-      - name: Build Docker image (ARM64)
-        if: matrix.arch == 'aarch64'
-        run: docker build -t carla-arm64-builder:latest build-containers/x86_64-cross-arm64-ubuntu-22.04/
-
-      - name: Build C++ clients (x86_64)
-        if: matrix.arch == 'x86_64'
-        run: |
-          cd $GITHUB_WORKSPACE
-          make build-x86_64
-          make build-x86_64-static
-
-      - name: Build C++ clients (ARM64)
-        if: matrix.arch == 'aarch64'
-        run: |
-          cd $GITHUB_WORKSPACE
-          make build-arm64
-          make build-arm64-static
-
-      - name: Package
-        run: |
-          cd $GITHUB_WORKSPACE
-          mkdir -p dist
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            tar -czvf dist/carla-cpp-client-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}-dynamic.tar.gz \
-              examples/cpp_client/cpp_client
-            tar -czvf dist/carla-cpp-client-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}-static.tar.gz \
-              examples/cpp_client/cpp_client_static
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            TAG="v${VERSION}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#v}"
           else
-            tar -czvf dist/carla-cpp-client-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}-dynamic.tar.gz \
-              build/aarch64/cpp_client/cpp_client
-            tar -czvf dist/carla-cpp-client-${{ needs.version.outputs.version }}-linux-${{ matrix.arch }}-static.tar.gz \
-              build/aarch64/cpp_client/cpp_client_static
+            # Get latest tag or default to v0.9.16
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.9.16")
+            VERSION="${LATEST_TAG#v}"
+            TAG="${LATEST_TAG}"
           fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION} (tag: ${TAG})"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: cpp-client-${{ matrix.os }}-${{ matrix.arch }}
-          path: dist/*.tar.gz
+  build:
+    name: Build Release Artifacts
+    needs: calculate-version
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ needs.calculate-version.outputs.version }}
+      upload-artifacts: true
 
-  # Build Python wheels
-  build-wheels:
-    name: Build wheels (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    needs: version
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, ubuntu-24.04, macos-15]
-
-    steps:
-      - name: Skip macOS in act
-        if: ${{ env.ACT && matrix.os == 'macos-15' }}
-        run: |
-          echo "Skipping macOS build in act environment"
-          exit 0
-
-      - uses: actions/checkout@v6
-        if: ${{ !env.ACT || matrix.os != 'macos-15' }}
-
-      - name: Set up QEMU (for ARM64 builds on Linux)
-        if: ${{ runner.os == 'Linux' && !env.ACT && matrix.os != 'macos-15' }}
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Build wheels (act - x86_64 only)
-        if: ${{ env.ACT && matrix.os != 'macos-15' }}
-        uses: pypa/cibuildwheel@v2.21.3
-        env:
-          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
-          CIBW_SKIP: "*-musllinux_*"
-          CIBW_ARCHS: "x86_64"
-          CIBW_BUILD_VERBOSITY: 1
-          CIBW_ENVIRONMENT: CARLA_VERSION=${{ needs.version.outputs.version }}
-          CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
-
-      - name: Build wheels (CI - Linux)
-        if: ${{ !env.ACT && runner.os == 'Linux' }}
-        uses: pypa/cibuildwheel@v2.21.3
-        env:
-          CIBW_BUILD: cp38-* cp39-* cp310-* cp311-* cp312-*
-          CIBW_SKIP: "*-musllinux_*"
-          CIBW_ARCHS: "x86_64 aarch64"
-          CIBW_BUILD_VERBOSITY: 1
-          CIBW_ENVIRONMENT: CARLA_VERSION=${{ needs.version.outputs.version }}
-          CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
-      
-      - name: Build wheels (CI - macOS)
-        if: ${{ !env.ACT && runner.os == 'macOS' }}
-        uses: pypa/cibuildwheel@v2.21.3
-        env:
-          CIBW_BUILD: cp39-* cp310-* cp311-* cp312-*
-          CIBW_ARCHS: "x86_64 arm64"
-          CIBW_BUILD_VERBOSITY: 1
-          CIBW_ENVIRONMENT: CARLA_VERSION=${{ needs.version.outputs.version }}
-          CIBW_TEST_COMMAND: python -c "import carla; print('Import successful')"
-
-      - name: Upload wheels
-        if: ${{ !env.ACT || matrix.os != 'macos-15' }}
-        uses: actions/upload-artifact@v5
-        with:
-          name: wheels-${{ matrix.os }}
-          path: wheelhouse/*.whl
-
-  # Build source distribution
-  build-sdist:
-    name: Build source distribution
+  create-release:
+    name: Create GitHub Release
+    needs: [calculate-version, build]
     runs-on: ubuntu-latest
-    needs: version
+    
     steps:
       - uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-
-      - name: Set up Python
-        run: uv python install 3.11
-
-      - name: Build sdist
-        run: uv build --sdist
-
-      - name: Upload sdist
-        uses: actions/upload-artifact@v5
-        with:
-          name: sdist
-          path: dist/*.tar.gz
-
-  # Create GitHub Release
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    needs: [version, build-cpp, build-wheels, build-sdist]
-    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
-    steps:
-      - name: Skip in act
-        if: ${{ env.ACT }}
-        run: |
-          echo "Skipping release in act environment"
-          exit 0
-
-      - uses: actions/checkout@v6
-        if: ${{ !env.ACT }}
 
       - name: Download all artifacts
-        if: ${{ !env.ACT }}
         uses: actions/download-artifact@v5
         with:
           path: artifacts
 
-      - name: Prepare release files
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Prepare release assets
         run: |
-          mkdir -p release
-          find artifacts -name "*.tar.gz" -exec cp {} release/ \;
-          find artifacts -name "*.whl" -exec cp {} release/ \;
+          mkdir -p release-assets
+          
+          # Collect C++ clients
+          find artifacts -name "cpp_client" -type f -exec cp {} release-assets/ \;
+          
+          # Collect wheels
+          find artifacts -name "*.whl" -type f -exec cp {} release-assets/ \;
+          
+          # Rename C++ clients with architecture suffix
+          cd release-assets
+          for file in cpp_client*; do
+            if [ -f "$file" ]; then
+              # Determine architecture from parent directory
+              arch=$(echo "$file" | grep -oP '(x86_64|aarch64|arm64)' || echo "unknown")
+              mv "$file" "cpp_client-${arch}"
+            fi
+          done
+          
+          ls -lah
 
       - name: Create Release
-        if: ${{ !env.ACT }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.version.outputs.version }}
-          name: CARLA Simple Client v${{ needs.version.outputs.version }}
-          body: |
-            ## CARLA Simple Client v${{ needs.version.outputs.version }}
-            
-            Standalone client library for CARLA Simulator (ue4/0.9.16 branch).
-            
-            ### C++ Client Binaries
-            Both dynamic and static builds available:
-            - `carla-cpp-client-*-linux-x86_64-dynamic.tar.gz` - Ubuntu 24.04 x86_64 (~3.7 MB, requires system libraries)
-            - `carla-cpp-client-*-linux-x86_64-static.tar.gz` - Ubuntu 24.04 x86_64 (~5.2 MB, standalone)
-            - `carla-cpp-client-*-linux-aarch64-dynamic.tar.gz` - Ubuntu 24.04 ARM64 (~3.6 MB, requires system libraries)
-            - `carla-cpp-client-*-linux-aarch64-static.tar.gz` - Ubuntu 24.04 ARM64 (~5.0 MB, standalone)
-            
-            ### Python Wheels
-            Available for:
-            - Ubuntu 22.04/24.04 (x86_64, ARM64)
-            - macOS 15 (x86_64, ARM64)
-            - Python 3.8, 3.9, 3.10, 3.11, 3.12
-            
-            Install from PyPI:
-            ```bash
-            pip install carla-client
-            ```
-          files: release/*
+          tag_name: ${{ needs.calculate-version.outputs.tag }}
+          name: Release ${{ needs.calculate-version.outputs.version }}
           draft: false
-          prerelease: false
-
-  # Publish to PyPI
-  publish-pypi:
-    name: Publish to PyPI
-    runs-on: ubuntu-latest
-    needs: [version, build-wheels, build-sdist, release]
-    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
-    permissions:
-      id-token: write
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v5
-        with:
-          path: artifacts
-
-      - name: Prepare dist files
-        run: |
-          mkdir -p dist
-          find artifacts -name "*.whl" -exec cp {} dist/ \;
-          find artifacts -name "*.tar.gz" -exec cp {} dist/ \;
+          prerelease: ${{ contains(needs.calculate-version.outputs.version, '-') }}
+          generate_release_notes: true
+          files: |
+            release-assets/*
 
       - name: Publish to PyPI
-        if: ${{ !env.ACT }}
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
+        if: ${{ !env.ACT && !contains(needs.calculate-version.outputs.version, '-') }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          pip install twine
+          twine upload release-assets/*.whl
